@@ -33,6 +33,7 @@ jobs:
           cd src
           composer install --prefer-dist --no-interaction --optimize-autoloader
 
+      # Uncomment if you want to run tests
       # - name: 🧪 Run Tests
       #   run: |
       #     cd src
@@ -66,7 +67,7 @@ jobs:
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
-            bash /var/www/user-service/deployment/deploy.sh
+            echo "🚀 Starting Deployment on DigitalOcean..."
 
             # Ensure necessary directories exist
             sudo mkdir -p $PROJECT_DIR
@@ -93,6 +94,17 @@ jobs:
               git pull origin main
             fi
 
+            # Check if Deployment Files Exist
+            if [ ! -f "deployment/docker-compose.prod.yml" ]; then
+                echo "❌ Error: deployment/docker-compose.prod.yml is missing!"
+                exit 1
+            fi
+
+            if [ ! -f "deployment/.env.prod" ]; then
+                echo "❌ Error: deployment/.env.prod file is missing!"
+                exit 1
+            fi
+
             # Copy Environment Variables
             cp deployment/.env.prod .env
             echo "✅ Environment variables set up"
@@ -117,8 +129,8 @@ jobs:
             echo "🔄 Running database migrations..."
             docker exec user_service_app php artisan migrate --force
 
-            # Fix Permissions
+            # Fix Permissions (Corrected Container Name)
             echo "🔧 Fixing storage & permissions..."
-            docker exec laravel_app chmod -R 777 storage bootstrap/cache
+            docker exec user_service_app chmod -R 777 storage bootstrap/cache
 
             echo "✅ Deployment complete!"
