@@ -30,8 +30,8 @@ jobs:
 
       - name: 📦 Install Dependencies
         run: |
-          cd src  # Ensure the script runs inside the Laravel project folder
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+          cd src
+          composer install --prefer-dist --no-interaction --optimize-autoloader
 
       - name: 🧪 Run Tests
         run: |
