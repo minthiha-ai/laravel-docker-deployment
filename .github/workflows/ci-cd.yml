@@ -70,6 +70,11 @@ jobs:
             echo "🚀 Starting Deployment on DigitalOcean..."
 
             # Ensure necessary directories exist
+            if [ -z "$PROJECT_DIR" ]; then
+              echo "❌ Error: PROJECT_DIR is not set!"
+              exit 1
+            fi
+
             sudo mkdir -p $PROJECT_DIR
             sudo chown -R $USER:$USER $PROJECT_DIR
             cd $PROJECT_DIR
@@ -79,19 +84,21 @@ jobs:
               echo "🐳 Installing Docker..."
               sudo apt update && sudo apt install -y docker.io docker-compose
               sudo usermod -aG docker $USER
-              newgrp docker
+              sudo systemctl restart docker
             fi
 
             # Ensure correct project directory
             cd $PROJECT_DIR
 
-            # Clone or Update Repository
+            # If .git does not exist, initialize repo properly
             if [ ! -d ".git" ]; then
-              echo "📥 Cloning Repository..."
-              git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
+                echo "📥 Cloning Repository..."
+                git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
             else
-              echo "📥 Pulling Latest Code..."
-              git pull origin main
+                echo "📥 Pulling Latest Code..."
+                git fetch --all
+                git checkout main
+                git reset --hard origin/main
             fi
 
             # Check if Deployment Files Exist
@@ -112,6 +119,10 @@ jobs:
             # Stop Old Containers
             echo "🐳 Stopping existing containers..."
             docker-compose -f deployment/docker-compose.prod.yml down
+
+            # Remove old Docker images to free space
+            echo "🧹 Cleaning up old Docker images..."
+            docker system prune -af
 
             # Pull Latest Docker Image
             echo "🐳 Pulling latest Docker image..."
