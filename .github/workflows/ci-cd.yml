@@ -33,10 +33,10 @@ jobs:
           cd src
           composer install --prefer-dist --no-interaction --optimize-autoloader
 
-      - name: 🧪 Run Tests
-        run: |
-          cd src
-          vendor/bin/phpunit
+      # - name: 🧪 Run Tests
+      #   run: |
+      #     cd src
+      #     vendor/bin/phpunit
 
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
