@@ -117,9 +117,9 @@ jobs:
                 exit 1
             fi
 
-            # Copy Environment Variables
-            cp deployment/.env.prod .env
-            echo "✅ Environment variables set up"
+            # Ensure .env is copied to the correct location
+            cp deployment/.env.prod $PROJECT_DIR/.env
+            echo "✅ Environment variables set up at $PROJECT_DIR/.env"
 
             # Stop Old Containers
             echo "🐳 Stopping existing containers..."
