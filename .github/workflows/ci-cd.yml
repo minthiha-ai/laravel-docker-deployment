@@ -1,0 +1,117 @@
+name: Laravel Full CI/CD with Docker & DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  APP_NAME: laravel-app
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/user-service-app
+  PROJECT_DIR: /var/www/user-service
+
+jobs:
+  build-and-test:
+    name: 🏗 Build, Test & Push Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v3
+
+      - name: 🛠 Set up PHP & Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer
+
+      - name: 📦 Install Dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: 🧪 Run Tests
+        run: php artisan test
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: 🔑 Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: 📦 Build and Push Docker Image (With Caching)
+        run: |
+          docker build --cache-from=type=registry,ref=$DOCKER_IMAGE:latest \
+          --build-arg APP_ENV=production -t $DOCKER_IMAGE:latest .
+          docker push $DOCKER_IMAGE:latest
+
+  deploy:
+    name: 🚀 Fully Automated Deployment to DigitalOcean
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - name: 📤 Deploy & Setup Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DO_SERVER_IP }}
+          username: ${{ secrets.DO_SSH_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            bash /var/www/user-service/deployment/deploy.sh
+
+            # Ensure necessary directories exist
+            sudo mkdir -p $PROJECT_DIR
+            sudo chown -R $USER:$USER $PROJECT_DIR
+            cd $PROJECT_DIR
+
+            # Install dependencies if not installed (one-time setup)
+            if ! command -v docker &> /dev/null; then
+              echo "🐳 Installing Docker..."
+              sudo apt update && sudo apt install -y docker.io docker-compose
+              sudo usermod -aG docker $USER
+              newgrp docker
+            fi
+
+            # Clone or Update Repository
+            if [ ! -d "$PROJECT_DIR/.git" ]; then
+              echo "📥 Cloning Repository..."
+              git clone https://github.com/minthiha-ai/laravel-docker-deployment.git $PROJECT_DIR
+            else
+              echo "📥 Pulling Latest Code..."
+              git pull origin main
+            fi
+
+            # Copy Environment Variables
+            cp deployment/.env.prod .env
+            echo "✅ Environment variables set up"
+
+            # Stop Old Containers
+            echo "🐳 Stopping existing containers..."
+            docker-compose -f deployment/docker-compose.prod.yml down
+
+            # Pull Latest Docker Image
+            echo "🐳 Pulling latest Docker image..."
+            docker pull $DOCKER_IMAGE:latest
+
+            # Start New Containers
+            echo "🐳 Starting new containers..."
+            docker-compose -f deployment/docker-compose.prod.yml up -d --remove-orphans
+
+            # Verify Running Containers
+            echo "📊 Checking running containers..."
+            docker ps -a
+
+            # Run Database Migrations
+            echo "🔄 Running database migrations..."
+            docker exec laravel_app php artisan migrate --force
+
+            # Fix Permissions
+            echo "🔧 Fixing storage & permissions..."
+            docker exec laravel_app chmod -R 777 storage bootstrap/cache
+
+            echo "✅ Deployment complete!"
