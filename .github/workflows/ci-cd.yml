@@ -69,14 +69,19 @@ jobs:
           script: |
             echo "🚀 Starting Deployment on DigitalOcean..."
 
-            # Ensure necessary directories exist
-            if [ -z "$PROJECT_DIR" ]; then
-              echo "❌ Error: PROJECT_DIR is not set!"
-              exit 1
+            # Explicitly set PROJECT_DIR inside SSH session
+            export PROJECT_DIR="/var/www/user-service"
+            echo "Using PROJECT_DIR: $PROJECT_DIR"
+
+            # Ensure the project directory exists
+            if [ ! -d "$PROJECT_DIR" ]; then
+              echo "📂 Creating project directory..."
+              sudo mkdir -p $PROJECT_DIR
+              sudo chown -R $USER:$USER $PROJECT_DIR
+            else
+              echo "✅ Project directory already exists: $PROJECT_DIR"
             fi
 
-            sudo mkdir -p $PROJECT_DIR
-            sudo chown -R $USER:$USER $PROJECT_DIR
             cd $PROJECT_DIR
 
             # Install dependencies if not installed (one-time setup)
@@ -84,6 +89,7 @@ jobs:
               echo "🐳 Installing Docker..."
               sudo apt update && sudo apt install -y docker.io docker-compose
               sudo usermod -aG docker $USER
+              sudo systemctl daemon-reload
               sudo systemctl restart docker
             fi
 
@@ -96,9 +102,8 @@ jobs:
                 git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
             else
                 echo "📥 Pulling Latest Code..."
-                git fetch --all
-                git checkout main
-                git reset --hard origin/main
+                git stash
+                git pull --rebase origin main
             fi
 
             # Check if Deployment Files Exist
@@ -118,7 +123,7 @@ jobs:
 
             # Stop Old Containers
             echo "🐳 Stopping existing containers..."
-            docker-compose -f deployment/docker-compose.prod.yml down
+            docker-compose -f deployment/docker-compose.prod.yml down --remove-orphans
 
             # Remove old Docker images to free space
             echo "🧹 Cleaning up old Docker images..."
