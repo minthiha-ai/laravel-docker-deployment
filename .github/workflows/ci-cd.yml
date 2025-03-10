@@ -29,10 +29,14 @@ jobs:
           tools: composer
 
       - name: 📦 Install Dependencies
-        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+        run: |
+          cd src  # Ensure the script runs inside the Laravel project folder
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
       - name: 🧪 Run Tests
-        run: php artisan test
+        run: |
+          cd src
+          php artisan test
 
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -46,7 +50,7 @@ jobs:
       - name: 📦 Build and Push Docker Image (With Caching)
         run: |
           docker build --cache-from=type=registry,ref=$DOCKER_IMAGE:latest \
-          --build-arg APP_ENV=production -t $DOCKER_IMAGE:latest .
+          --build-arg APP_ENV=production -t $DOCKER_IMAGE:latest -f php/Dockerfile .
           docker push $DOCKER_IMAGE:latest
 
   deploy:
@@ -77,10 +81,13 @@ jobs:
               newgrp docker
             fi
 
+            # Ensure correct project directory
+            cd $PROJECT_DIR
+
             # Clone or Update Repository
-            if [ ! -d "$PROJECT_DIR/.git" ]; then
+            if [ ! -d ".git" ]; then
               echo "📥 Cloning Repository..."
-              git clone https://github.com/minthiha-ai/laravel-docker-deployment.git $PROJECT_DIR
+              git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
             else
               echo "📥 Pulling Latest Code..."
               git pull origin main
@@ -108,7 +115,7 @@ jobs:
 
             # Run Database Migrations
             echo "🔄 Running database migrations..."
-            docker exec laravel_app php artisan migrate --force
+            docker exec user_service_app php artisan migrate --force
 
             # Fix Permissions
             echo "🔧 Fixing storage & permissions..."
