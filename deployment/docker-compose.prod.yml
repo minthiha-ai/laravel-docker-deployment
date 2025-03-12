@@ -16,9 +16,7 @@ services:
       - storage_data:/var/www/html/storage
       - logs_data:/var/www/html/storage/logs
     networks:
-      laravel_network:
-        aliases:
-          - user-service-app
+      - app-network
     healthcheck:
       test: ["CMD", "php", "-r", "echo 1;"]
       interval: 10s
@@ -40,9 +38,7 @@ services:
     depends_on:
       - app
     networks:
-      laravel_network:
-        aliases:
-          - user-service-nginx
+      - app-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost || exit 1"]
       interval: 10s
@@ -63,12 +59,10 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      laravel_network:
-        aliases:
-          - user-service-mysql
+      - app-network
 
 networks:
-  laravel_network:
+  app-network:
     driver: bridge
 
 volumes:
