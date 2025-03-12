@@ -124,6 +124,10 @@ docker exec $APP_CONTAINER php artisan migrate --force
 # Fix Permissions
 echo "🔧 Fixing storage & permissions..."
 docker exec $APP_CONTAINER chmod -R 777 storage bootstrap/cache
+docker exec $APP_CONTAINER chmod -R 777 storage/logs
+docker exec $APP_CONTAINER chmod -R 777 storage/framework/cache
+docker exec $APP_CONTAINER chmod -R 777 storage/framework/sessions
+docker exec $APP_CONTAINER chmod -R 777 storage/framework/views
 
 # Restart Services
 echo "🔄 Restarting application..."
