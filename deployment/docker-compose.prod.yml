@@ -18,10 +18,11 @@ services:
         aliases:
           - user-service-app
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
+      test: ["CMD", "php", "-r", "echo 1;"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 30s
 
   nginx:
     image: nginx:alpine
@@ -30,7 +31,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - /var/www/user-service/nginx/default.conf:/etc/nginx/conf.d/default.conf
       - app_data:/var/www/html
     depends_on:
       - app
@@ -38,6 +39,11 @@ services:
       laravel_network:
         aliases:
           - user-service-nginx
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   mysql:
     image: mysql:8.0
