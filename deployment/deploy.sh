@@ -6,11 +6,11 @@ echo "🚀 Starting Full Deployment Process on DigitalOcean"
 export PROJECT_DIR="/var/www/user-service"
 echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
 
-# Ensure necessary directories exist
+# Ensure necessary directories exist and set correct ownership
 if [ ! -d "$PROJECT_DIR" ]; then
   echo "📂 Creating project directory..."
   sudo mkdir -p $PROJECT_DIR
-  sudo chown -R $USER:$USER $PROJECT_DIR
+  sudo chown -R $(whoami):$(whoami) $PROJECT_DIR
 else
   echo "✅ Project directory already exists: $PROJECT_DIR"
 fi
@@ -20,7 +20,8 @@ cd $PROJECT_DIR
 # Ensure Docker and Docker Compose are installed
 if ! command -v docker &> /dev/null; then
     echo "🐳 Docker is not installed. Installing now..."
-    sudo apt update && sudo apt install -y docker.io docker-compose
+    sudo apt update && sudo apt upgrade -y
+    sudo apt install -y docker.io docker-compose
     sudo systemctl enable docker
     sudo systemctl start docker
 fi
@@ -87,6 +88,20 @@ if [ -z "$APP_CONTAINER" ]; then
     docker ps -a
     exit 1
 fi
+
+# Wait for MySQL to be ready
+MYSQL_CONTAINER=$(docker ps --format '{{.Names}}' | grep 'user-service-mysql')
+if [ -z "$MYSQL_CONTAINER" ]; then
+    echo "❌ Error: MySQL container not found!"
+    exit 1
+fi
+
+echo "⌛ Waiting for MySQL to be ready..."
+until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
+    echo "⏳ MySQL is not ready yet..."
+    sleep 5
+done
+echo "✅ MySQL is ready!"
 
 # Run Database Migrations
 echo "🔄 Running database migrations..."
