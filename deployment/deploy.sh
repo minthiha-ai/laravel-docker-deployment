@@ -30,7 +30,7 @@ fi
 # Ensure .env is correctly set
 if [ -f "deployment/.env.prod" ]; then
   echo "🔄 Setting up environment variables..."
-  cp deployment/.env.prod .env
+  cp deployment/.env.prod $PROJECT_DIR/.env
   echo "✅ Environment variables set up at $PROJECT_DIR/.env"
 else
   echo "❌ Error: deployment/.env.prod file is missing!"
