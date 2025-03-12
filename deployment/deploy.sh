@@ -17,13 +17,24 @@ fi
 
 cd $PROJECT_DIR
 
+# Ensure Docker and Docker Compose are installed
+if ! command -v docker &> /dev/null; then
+    echo "🐳 Docker is not installed. Installing now..."
+    sudo apt update && sudo apt install -y docker.io docker-compose
+    sudo systemctl enable docker
+    sudo systemctl start docker
+fi
+
+# Ensure the correct project directory
+cd $PROJECT_DIR
+
 # Clone or Update Repository
 if [ ! -d ".git" ]; then
   echo "📥 Cloning Repository..."
   git clone https://github.com/minthiha-ai/laravel-docker-deployment.git $PROJECT_DIR
 else
   echo "📥 Pulling Latest Code..."
-  git stash
+  git reset --hard origin/main
   git pull --rebase origin main
 fi
 
@@ -45,9 +56,20 @@ docker-compose -f deployment/docker-compose.prod.yml down --remove-orphans
 echo "🧹 Cleaning up old Docker images..."
 docker system prune -af
 
+# Debug Docker Image Name
+echo "🔍 Checking Docker Image Name..."
+export DOCKER_IMAGE="ace009/user-service-app:latest"
+echo "Using DOCKER_IMAGE: $DOCKER_IMAGE"
+
+# Check if DOCKER_IMAGE is set correctly
+if [ -z "$DOCKER_IMAGE" ]; then
+    echo "❌ Error: DOCKER_IMAGE is not set!"
+    exit 1
+fi
+
 # Pull Latest Docker Image
 echo "🐳 Pulling latest Docker image..."
-docker pull ace009/user-service-app:latest
+docker pull $DOCKER_IMAGE
 
 # Start New Containers
 echo "🐳 Starting new containers..."

@@ -4,7 +4,7 @@ services:
   app:
     image: ace009/user-service-app:latest
     container_name: user_service_app
-    restart: always
+    restart: unless-stopped
     working_dir: /var/www/html
     env_file:
       - .env
@@ -17,11 +17,16 @@ services:
       laravel_network:
         aliases:
           - user-service-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   nginx:
     image: nginx:alpine
     container_name: user_service_nginx
-    restart: always
+    restart: unless-stopped
     ports:
       - "80:80"
     volumes:
@@ -37,19 +42,16 @@ services:
   mysql:
     image: mysql:8.0
     container_name: user_service_mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    restart: unless-stopped
+    env_file:
+      - .env
     volumes:
       - laravel_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "&&", "echo", "'MySQL is up'"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
     networks:
       laravel_network:
         aliases:
