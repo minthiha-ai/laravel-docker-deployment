@@ -39,15 +39,16 @@ else
   git pull --rebase origin main
 fi
 
-# Ensure .env is correctly set
-if [ -f "deployment/.env.prod" ]; then
-  echo "🔄 Setting up environment variables..."
-  cp deployment/.env.prod $PROJECT_DIR/.env
-  echo "✅ Environment variables set up at $PROJECT_DIR/.env"
-else
-  echo "❌ Error: deployment/.env.prod file is missing!"
-  exit 1
+# Ensure `.env` file exists
+if [ ! -f "/var/www/user-service/deployment/.env" ]; then
+    echo "❌ Error: .env file is missing! Creating default .env..."
+    cp /var/www/user-service/deployment/.env.example /var/www/user-service/deployment/.env
 fi
+
+# Ensure correct environment file is used
+echo "🔄 Setting up environment variables..."
+cp deployment/.env.prod .env
+echo "✅ Environment variables set up at $PROJECT_DIR/.env"
 
 # Stop Old Containers
 echo "🐳 Stopping existing containers..."
@@ -104,7 +105,7 @@ done
 echo "✅ MySQL is ready!"
 
 # Ensure Laravel APP_KEY is set
-echo "🔑 Generating Laravel APP_KEY..."
+echo "🔑 Ensuring Laravel APP_KEY is set..."
 docker exec $APP_CONTAINER php artisan key:generate --force
 
 # Clear and Cache Configuration
@@ -127,5 +128,6 @@ docker exec $APP_CONTAINER chmod -R 777 storage bootstrap/cache
 # Restart Services
 echo "🔄 Restarting application..."
 docker restart $APP_CONTAINER
+docker restart user_service_nginx
 
 echo "✅ Deployment complete!"
