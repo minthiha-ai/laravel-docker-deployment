@@ -103,6 +103,19 @@ until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
 done
 echo "✅ MySQL is ready!"
 
+# Ensure Laravel APP_KEY is set
+echo "🔑 Generating Laravel APP_KEY..."
+docker exec $APP_CONTAINER php artisan key:generate --force
+
+# Clear and Cache Configuration
+echo "🔄 Clearing and caching config..."
+docker exec $APP_CONTAINER php artisan config:clear
+docker exec $APP_CONTAINER php artisan config:cache
+
+# Ensure storage is linked properly
+echo "🔗 Linking storage..."
+docker exec $APP_CONTAINER php artisan storage:link
+
 # Run Database Migrations
 echo "🔄 Running database migrations..."
 docker exec $APP_CONTAINER php artisan migrate --force
@@ -110,5 +123,9 @@ docker exec $APP_CONTAINER php artisan migrate --force
 # Fix Permissions
 echo "🔧 Fixing storage & permissions..."
 docker exec $APP_CONTAINER chmod -R 777 storage bootstrap/cache
+
+# Restart Services
+echo "🔄 Restarting application..."
+docker restart $APP_CONTAINER
 
 echo "✅ Deployment complete!"
