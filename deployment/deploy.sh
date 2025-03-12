@@ -62,9 +62,9 @@ echo "🔍 Checking Docker Image Name..."
 export DOCKER_IMAGE="ace009/user-service-app:latest"
 echo "Using DOCKER_IMAGE: $DOCKER_IMAGE"
 
-# Check if DOCKER_IMAGE is set correctly
+# Debugging: Check if the variable is set
 if [ -z "$DOCKER_IMAGE" ]; then
-    echo "❌ Error: DOCKER_IMAGE is not set!"
+    echo "❌ ERROR: DOCKER_IMAGE variable is not set properly!"
     exit 1
 fi
 
