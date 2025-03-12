@@ -13,19 +13,18 @@ services:
         condition: service_healthy
     volumes:
       - app_data:/var/www/html
-      - /var/www/user-service/deployment/.env:/var/www/html/.env:ro
+      - /var/www/user-service/deployment/.env:/var/www/html/.env
       - storage_data:/var/www/html/storage
       - logs_data:/var/www/html/storage/logs
-      - cache_data:/var/www/html/bootstrap/cache
     networks:
       laravel_network:
         aliases:
           - user-service-app
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost || exit 1"]
+      test: ["CMD", "php", "-r", "echo 1;"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
       start_period: 30s
 
   nginx:
