@@ -67,11 +67,14 @@ jobs:
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
+            export DOCKER_IMAGE=${{ secrets.DOCKER_USERNAME }}/user-service-app:latest
             export MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
             export MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
             export MYSQL_USER=${{ secrets.MYSQL_USER }}
             export MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
-            echo "🚀 Starting Deployment on DigitalOcean..."
+
+            echo "🚀 Running deploy.sh..."
+            bash deployment/deploy.sh
 
             # Set Project Directory
             export PROJECT_DIR="/var/www/user-service"
