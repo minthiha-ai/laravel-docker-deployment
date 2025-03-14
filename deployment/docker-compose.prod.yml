@@ -30,8 +30,11 @@ services:
     image: mysql:8.0
     container_name: user_service_mysql
     restart: unless-stopped
-    env_file:
-      - src/.env
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE}"
+      MYSQL_USER: "${MYSQL_USER}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD}"
     command: --default-authentication-plugin=mysql_native_password
     volumes:
       - laravel_mysql_data:/var/lib/mysql

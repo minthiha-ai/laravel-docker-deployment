@@ -50,7 +50,7 @@ fi
 # Ensure .env file is in src/
 if [ ! -f "$PROJECT_DIR/src/.env" ]; then
     echo "❌ Error: .env file is missing! Copying from example..."
-    cp $PROJECT_DIR/src/.env.example $PROJECT_DIR/src/.env
+    cp $PROJECT_DIR/deployment/.env.prod $PROJECT_DIR/src/.env
     echo "✅ Environment variables copied to src/.env"
 else
     echo "✅ .env file already exists in src/"
