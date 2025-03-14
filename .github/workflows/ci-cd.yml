@@ -69,7 +69,7 @@ jobs:
           script: |
             echo "🚀 Starting Deployment on DigitalOcean..."
 
-            # Explicitly set PROJECT_DIR inside SSH session
+            # Set Project Directory
             export PROJECT_DIR="/var/www/user-service"
             echo "Using PROJECT_DIR: $PROJECT_DIR"
 
@@ -84,19 +84,18 @@ jobs:
 
             cd $PROJECT_DIR
 
-            # Install dependencies if not installed (one-time setup)
+            # Install dependencies if not installed
             if ! command -v docker &> /dev/null; then
               echo "🐳 Installing Docker..."
               sudo apt update && sudo apt install -y docker.io docker-compose
               sudo usermod -aG docker $USER
-              sudo systemctl daemon-reload
               sudo systemctl restart docker
             fi
 
             # Ensure correct project directory
             cd $PROJECT_DIR
 
-            # If .git does not exist, initialize repo properly
+            # Clone repo if missing, otherwise pull latest changes
             if [ ! -d ".git" ]; then
                 echo "📥 Cloning Repository..."
                 git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
@@ -106,7 +105,7 @@ jobs:
                 git pull --rebase origin main
             fi
 
-            # Check if Deployment Files Exist
+            # Ensure necessary deployment files exist
             if [ ! -f "deployment/docker-compose.prod.yml" ]; then
                 echo "❌ Error: deployment/docker-compose.prod.yml is missing!"
                 exit 1
@@ -117,15 +116,15 @@ jobs:
                 exit 1
             fi
 
-            # Ensure .env is copied to the correct location
-            cp deployment/.env.prod $PROJECT_DIR/.env
-            echo "✅ Environment variables set up at $PROJECT_DIR/.env"
+            # Ensure `.env` is correctly placed
+            cp deployment/.env.prod src/.env
+            echo "✅ Environment variables set up at $PROJECT_DIR/src/.env"
 
             # Stop Old Containers
             echo "🐳 Stopping existing containers..."
             docker-compose -f deployment/docker-compose.prod.yml down --remove-orphans
 
-            # Remove old Docker images to free space
+            # Remove old Docker images
             echo "🧹 Cleaning up old Docker images..."
             docker system prune -af
 
@@ -137,16 +136,37 @@ jobs:
             echo "🐳 Starting new containers..."
             docker-compose -f deployment/docker-compose.prod.yml up -d --remove-orphans
 
-            # Verify Running Containers
-            echo "📊 Checking running containers..."
-            docker ps -a
+            # Wait for MySQL to be ready
+            MYSQL_CONTAINER="user_service_mysql"
+            echo "⌛ Waiting for MySQL to be ready..."
+            until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
+                echo "⏳ MySQL is not ready yet..."
+                sleep 5
+            done
+            echo "✅ MySQL is ready!"
 
-            # Run Database Migrations
+            # Check if database exists, create if necessary
+            echo "🛢 Checking if database exists..."
+            DB_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -p${{ secrets.MYSQL_ROOT_PASSWORD }} -e "SHOW DATABASES LIKE '${{ secrets.MYSQL_DATABASE }}';" | grep "${{ secrets.MYSQL_DATABASE }}" | wc -l)
+            if [ "$DB_EXISTS" -eq "0" ]; then
+              echo "🚀 Creating database: ${{ secrets.MYSQL_DATABASE }}"
+              docker exec $MYSQL_CONTAINER mysql -u root -p${{ secrets.MYSQL_ROOT_PASSWORD }} -e "CREATE DATABASE ${{ secrets.MYSQL_DATABASE }};"
+            else
+              echo "✅ Database ${{ secrets.MYSQL_DATABASE }} already exists!"
+            fi
+
+            # Ensure correct MySQL user permissions
+            echo "🔧 Setting MySQL permissions..."
+            docker exec $MYSQL_CONTAINER mysql -u root -p${{ secrets.MYSQL_ROOT_PASSWORD }} -e "ALTER USER '${{ secrets.MYSQL_USER }}'@'%' IDENTIFIED WITH mysql_native_password BY '${{ secrets.MYSQL_PASSWORD }}';"
+            docker exec $MYSQL_CONTAINER mysql -u root -p${{ secrets.MYSQL_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON ${{ secrets.MYSQL_DATABASE }}.* TO '${{ secrets.MYSQL_USER }}'@'%';"
+            docker exec $MYSQL_CONTAINER mysql -u root -p${{ secrets.MYSQL_ROOT_PASSWORD }} -e "FLUSH PRIVILEGES;"
+
+            # Run Laravel Migrations
             echo "🔄 Running database migrations..."
             docker exec user_service_app php artisan migrate --force
 
-            # Fix Permissions (Corrected Container Name)
+            # Fix Permissions
             echo "🔧 Fixing storage & permissions..."
-            docker exec user_service_app chmod -R 777 storage bootstrap/cache
+            docker exec user_service_app chmod -R 777 storage bootstrap/cache storage/logs storage/framework
 
             echo "✅ Deployment complete!"
