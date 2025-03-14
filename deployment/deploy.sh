@@ -49,8 +49,11 @@ fi
 
 # Ensure .env file is in src/
 if [ ! -f "$PROJECT_DIR/src/.env" ]; then
-    echo "🔄 Copying production .env..."
-    cp deployment/.env.prod src/.env
+    echo "❌ Error: .env file is missing! Copying from example..."
+    cp $PROJECT_DIR/src/.env.example $PROJECT_DIR/src/.env
+    echo "✅ Environment variables copied to src/.env"
+else
+    echo "✅ .env file already exists in src/"
 fi
 
 # Stop Old Containers
@@ -76,36 +79,57 @@ until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
 done
 
 # Ensure Database and User Exist
-docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
+docker exec user_service_mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
+CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};
 CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
 ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
 GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
-FLUSH PRIVILEGES;
-CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};"
+FLUSH PRIVILEGES;"
 
 docker restart user_service_mysql
 sleep 5
 
-# Check APP_KEY
+echo "🛢 Checking if database exists..."
+DB_EXIST=$(docker exec user_service_mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES LIKE '${MYSQL_DATABASE}';" | grep ${MYSQL_DATABASE} || true)
+
+if [ -z "$DB_EXIST" ]; then
+    echo "🚀 Creating database: ${MYSQL_DATABASE}"
+    docker exec user_service_mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE ${MYSQL_DATABASE};"
+else
+    echo "✅ Database ${MYSQL_DATABASE} already exists."
+fi
+
+# Check APP_KEY and Generate If Missing
 APP_CONTAINER=$(docker ps --format '{{.Names}}' | grep 'user-service-app')
-APP_KEY=$(docker exec $APP_CONTAINER sh -c "grep APP_KEY /var/www/html/.env | cut -d '=' -f2")
+APP_KEY=$(docker exec $APP_CONTAINER sh -c "grep '^APP_KEY=' /var/www/html/.env | cut -d '=' -f2 | tr -d ' '")
+
 if [[ -z "$APP_KEY" || "$APP_KEY" == "null" ]]; then
+    echo "🔑 Generating Laravel APP_KEY..."
     docker exec $APP_CONTAINER php artisan key:generate --force
 fi
 
-# Fix Permissions
+# Fix Permissions (Safer Alternative to chmod 777)
+echo "🔧 Setting correct file permissions..."
 docker exec $APP_CONTAINER chown -R www-data:www-data /var/www/html
-docker exec $APP_CONTAINER chmod -R 777 /var/www/html/storage /var/www/html/bootstrap/cache
+docker exec $APP_CONTAINER chmod -R ug+rwx /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Cache Config & Routes
+# Clear and Cache Configurations
+echo "🔄 Clearing and caching config..."
 docker exec $APP_CONTAINER php artisan config:clear
 docker exec $APP_CONTAINER php artisan config:cache
 docker exec $APP_CONTAINER php artisan route:cache
 docker exec $APP_CONTAINER php artisan view:cache
 
+# Ensure Storage Link Exists
+echo "🔗 Creating storage symlink..."
 docker exec $APP_CONTAINER php artisan storage:link || true
+
+# Run Database Migrations
+echo "🔄 Running database migrations..."
 docker exec $APP_CONTAINER php artisan migrate --force
 
+# Restart Services
+echo "🔄 Restarting application..."
 docker restart $APP_CONTAINER
 docker restart user_service_nginx
 
