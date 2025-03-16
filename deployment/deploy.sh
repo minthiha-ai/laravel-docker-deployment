@@ -4,12 +4,12 @@ set -e  # Exit immediately if a command fails
 
 echo "🚀 Starting Full Deployment Process on DigitalOcean"
 
+# Ensure script runs from correct directory
+cd "$(dirname "$0")"
+
 # Define project directory
 export PROJECT_DIR="/var/www/user-service"
 echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
-
-# Ensure script is running from correct directory
-cd $PROJECT_DIR/deployment || exit 1
 
 # Load MySQL environment variables from .env.prod
 if [ -f "$PROJECT_DIR/deployment/.env.prod" ]; then
@@ -23,16 +23,16 @@ fi
 
 # Ensure necessary directories exist
 if [ ! -d "$PROJECT_DIR" ]; then
-  echo "📂 Creating project directory..."
-  sudo mkdir -p $PROJECT_DIR
-  sudo chown -R $(whoami):$(whoami) $PROJECT_DIR
+    echo "📂 Creating project directory..."
+    sudo mkdir -p $PROJECT_DIR
+    sudo chown -R $(whoami):$(whoami) $PROJECT_DIR
 else
-  echo "✅ Project directory already exists: $PROJECT_DIR"
+    echo "✅ Project directory already exists: $PROJECT_DIR"
 fi
 
 if [ ! -d "$PROJECT_DIR/src" ]; then
-  echo "❌ Error: Laravel src directory is missing!"
-  exit 1
+    echo "❌ Error: Laravel src directory is missing!"
+    exit 1
 fi
 
 cd $PROJECT_DIR
@@ -47,12 +47,12 @@ fi
 
 # Clone or Update Repository
 if [ ! -d ".git" ]; then
-  echo "📥 Cloning Repository..."
-  git clone https://github.com/minthiha-ai/laravel-docker-deployment.git $PROJECT_DIR
+    echo "📥 Cloning Repository..."
+    git clone https://github.com/minthiha-ai/laravel-docker-deployment.git $PROJECT_DIR
 else
-  echo "📥 Pulling Latest Code..."
-  git reset --hard origin/main
-  git pull --rebase origin main
+    echo "📥 Pulling Latest Code..."
+    git reset --hard origin/main
+    git pull --rebase origin main
 fi
 
 # Ensure .env file is in src/
@@ -80,8 +80,12 @@ fi
 docker pull $DOCKER_IMAGE
 docker-compose -f deployment/docker-compose.prod.yml up -d --remove-orphans
 
-# Wait for MySQL to be ready
-MYSQL_CONTAINER=$(docker ps --format '{{.Names}}' | grep 'user-service-mysql')
+# Ensure MySQL container exists before proceeding
+MYSQL_CONTAINER="user_service_mysql"
+if ! docker ps --format '{{.Names}}' | grep -q "$MYSQL_CONTAINER"; then
+    echo "❌ Error: MySQL container not found!"
+    exit 1
+fi
 
 echo "⌛ Waiting for MySQL to be ready..."
 until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
@@ -92,12 +96,12 @@ echo "✅ MySQL is ready!"
 
 # Check MySQL Root Password
 echo "🔍 Checking MySQL root password..."
-ROOT_ACCESS=$(docker exec $MYSQL_CONTAINER mysql -u root -e "SELECT 1;" 2>&1 || true)
+ROOT_ACCESS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT 1;" 2>&1 || true)
 
 if [[ "$ROOT_ACCESS" == *"Access denied for user"* ]]; then
     echo "⚠️ MySQL root password is missing! Resetting password..."
 
-    # Reset the MySQL root password inside the container
+    # Reset MySQL root password inside the container
     docker exec -i $MYSQL_CONTAINER mysql -u root -e "
     ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
     ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
@@ -108,6 +112,12 @@ if [[ "$ROOT_ACCESS" == *"Access denied for user"* ]]; then
 else
     echo "✅ MySQL root password is already set correctly."
 fi
+
+# Ensure MySQL is Ready
+until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
+    echo "⏳ Waiting for MySQL..."
+    sleep 5
+done
 
 # Ensure Database and User Exist
 echo "🛢 Checking if database exists..."
