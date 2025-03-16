@@ -131,12 +131,21 @@ else
 fi
 
 # Ensure MySQL User Exists & Set Permissions
-echo "🔧 Setting up MySQL user & permissions..."
-docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
-CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
-ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
-GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
-FLUSH PRIVILEGES;"
+echo "🔧 Checking if MySQL user exists..."
+USER_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -sse "SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '${MYSQL_USER}');")
+
+if [ "$USER_EXISTS" -eq "0" ]; then
+    echo "🚀 Creating MySQL user '${MYSQL_USER}'..."
+    docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
+    CREATE USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
+    GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
+    FLUSH PRIVILEGES;"
+else
+    echo "✅ MySQL user '${MYSQL_USER}' already exists. Updating password..."
+    docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
+    ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
+    FLUSH PRIVILEGES;"
+fi
 
 # Restart MySQL to apply changes
 docker restart $MYSQL_CONTAINER
