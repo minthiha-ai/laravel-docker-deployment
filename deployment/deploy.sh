@@ -8,10 +8,18 @@ echo "🚀 Starting Full Deployment Process on DigitalOcean"
 export PROJECT_DIR="/var/www/user-service"
 echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
 
+# Ensure script is running from correct directory
+cd $PROJECT_DIR/deployment || exit 1
+
 # Load MySQL environment variables from .env.prod
-set -a
-source deployment/.env.prod
-set +a
+if [ -f "$PROJECT_DIR/deployment/.env.prod" ]; then
+    set -a
+    source "$PROJECT_DIR/deployment/.env.prod"
+    set +a
+else
+    echo "❌ Error: Missing .env.prod file in deployment directory!"
+    exit 1
+fi
 
 # Ensure necessary directories exist
 if [ ! -d "$PROJECT_DIR" ]; then
@@ -49,8 +57,8 @@ fi
 
 # Ensure .env file is in src/
 if [ ! -f "$PROJECT_DIR/src/.env" ]; then
-    echo "❌ Error: .env file is missing! Copying from example..."
-    cp $PROJECT_DIR/deployment/.env.prod $PROJECT_DIR/src/.env
+    echo "❌ Error: .env file is missing! Copying from .env.prod..."
+    cp "$PROJECT_DIR/deployment/.env.prod" "$PROJECT_DIR/src/.env"
     echo "✅ Environment variables copied to src/.env"
 else
     echo "✅ .env file already exists in src/"
@@ -72,10 +80,18 @@ fi
 docker pull $DOCKER_IMAGE
 docker-compose -f deployment/docker-compose.prod.yml up -d --remove-orphans
 
+# Wait for MySQL to be ready
+MYSQL_CONTAINER=$(docker ps --format '{{.Names}}' | grep 'user-service-mysql')
+
+echo "⌛ Waiting for MySQL to be ready..."
+until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
+    echo "⏳ MySQL is still starting..."
+    sleep 5
+done
+echo "✅ MySQL is ready!"
+
 # Check MySQL Root Password
 echo "🔍 Checking MySQL root password..."
-MYSQL_CONTAINER="user_service_mysql"
-
 ROOT_ACCESS=$(docker exec $MYSQL_CONTAINER mysql -u root -e "SELECT 1;" 2>&1 || true)
 
 if [[ "$ROOT_ACCESS" == *"Access denied for user"* ]]; then
@@ -93,32 +109,27 @@ else
     echo "✅ MySQL root password is already set correctly."
 fi
 
-# Ensure MySQL is Ready
-MYSQL_CONTAINER=$(docker ps --format '{{.Names}}' | grep 'user-service-mysql')
-until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
-    sleep 5
-done
-
 # Ensure Database and User Exist
-docker exec user_service_mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
-CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};
+echo "🛢 Checking if database exists..."
+DB_EXIST=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES LIKE '${MYSQL_DATABASE}';" | grep ${MYSQL_DATABASE} || true)
+
+if [ -z "$DB_EXIST" ]; then
+    echo "🚀 Creating database: ${MYSQL_DATABASE}"
+    docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE ${MYSQL_DATABASE};"
+else
+    echo "✅ Database ${MYSQL_DATABASE} already exists."
+fi
+
+# Ensure MySQL user has correct permissions
+docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
 CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
 ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
 GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
 FLUSH PRIVILEGES;"
 
-docker restart user_service_mysql
+# Restart MySQL to apply changes
+docker restart $MYSQL_CONTAINER
 sleep 5
-
-echo "🛢 Checking if database exists..."
-DB_EXIST=$(docker exec user_service_mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES LIKE '${MYSQL_DATABASE}';" | grep ${MYSQL_DATABASE} || true)
-
-if [ -z "$DB_EXIST" ]; then
-    echo "🚀 Creating database: ${MYSQL_DATABASE}"
-    docker exec user_service_mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE ${MYSQL_DATABASE};"
-else
-    echo "✅ Database ${MYSQL_DATABASE} already exists."
-fi
 
 # Check APP_KEY and Generate If Missing
 APP_CONTAINER=$(docker ps --format '{{.Names}}' | grep 'user-service-app')
@@ -132,7 +143,7 @@ fi
 # Fix Permissions (Safer Alternative to chmod 777)
 echo "🔧 Setting correct file permissions..."
 docker exec $APP_CONTAINER chown -R www-data:www-data /var/www/html
-docker exec $APP_CONTAINER chmod -R ug+rwx /var/www/html/storage /var/www/html/bootstrap/cache
+docker exec $APP_CONTAINER chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 # Clear and Cache Configurations
 echo "🔄 Clearing and caching config..."
