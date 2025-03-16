@@ -94,23 +94,19 @@ until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
 done
 echo "✅ MySQL is ready!"
 
-# Check MySQL Root Password
-echo "🔍 Checking MySQL root password..."
-ROOT_ACCESS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT 1;" 2>&1 || true)
+# Check if the root user exists in MySQL before trying to alter it
+ROOT_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -sse "
+SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = 'root');" 2>/dev/null)
 
-if [[ "$ROOT_ACCESS" == *"Access denied for user"* ]]; then
-    echo "⚠️ MySQL root password is missing! Resetting password..."
-
-    # Reset MySQL root password inside the container
-    docker exec -i $MYSQL_CONTAINER mysql -u root -e "
+if [ "$ROOT_EXISTS" -eq "1" ]; then
+    echo "🔍 MySQL root user exists. Ensuring correct password..."
+    docker exec $MYSQL_CONTAINER mysql -u root -e "
     ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
     ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
-    FLUSH PRIVILEGES;
-    "
-
-    echo "✅ MySQL root password reset successfully."
+    FLUSH PRIVILEGES;"
+    echo "✅ MySQL root password updated successfully."
 else
-    echo "✅ MySQL root password is already set correctly."
+    echo "⚠️ MySQL root user does NOT exist. Skipping password reset."
 fi
 
 # Ensure MySQL is Ready
