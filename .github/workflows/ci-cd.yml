@@ -10,7 +10,8 @@ on:
 
 env:
   APP_NAME: laravel-app
-  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/user-service-app:latest
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/user-service-app
   PROJECT_DIR: /var/www/user-service
 
 jobs:
