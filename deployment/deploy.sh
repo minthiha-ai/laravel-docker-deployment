@@ -4,7 +4,7 @@ set -e  # Exit immediately if a command fails
 
 echo "🚀 Starting Full Deployment Process on DigitalOcean"
 
-# Ensure script runs from correct directory
+# Ensure script runs from the correct directory
 cd "$(dirname "$0")"
 
 # Define project directory
@@ -94,26 +94,23 @@ until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
 done
 echo "✅ MySQL is ready!"
 
-# Check if the root user exists in MySQL before trying to alter it
+# Ensure MySQL root user exists before altering password
 ROOT_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -sse "
-SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = 'root');" 2>/dev/null)
+SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = 'root' AND host = '%');" 2>/dev/null)
 
-if [ "$ROOT_EXISTS" -eq "1" ]; then
+if [ "$ROOT_EXISTS" -eq "0" ]; then
+    echo "⚠️ MySQL root user does NOT exist. Creating it..."
+    docker exec $MYSQL_CONTAINER mysql -u root -e "
+    CREATE USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
+    GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+    FLUSH PRIVILEGES;"
+else
     echo "🔍 MySQL root user exists. Ensuring correct password..."
     docker exec $MYSQL_CONTAINER mysql -u root -e "
     ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
-    ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
     FLUSH PRIVILEGES;"
     echo "✅ MySQL root password updated successfully."
-else
-    echo "⚠️ MySQL root user does NOT exist. Skipping password reset."
 fi
-
-# Ensure MySQL is Ready
-until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
-    echo "⏳ Waiting for MySQL..."
-    sleep 5
-done
 
 # Ensure Database and User Exist
 echo "🛢 Checking if database exists..."
@@ -140,9 +137,7 @@ if [ "$USER_EXISTS" -eq "0" ]; then
 else
     echo "✅ MySQL user '${MYSQL_USER}' already exists. Updating password..."
     docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
-    DROP USER '${MYSQL_USER}'@'%';
-    CREATE USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
-    GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
+    ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
     FLUSH PRIVILEGES;"
 fi
 
@@ -150,38 +145,13 @@ fi
 docker restart $MYSQL_CONTAINER
 sleep 5
 
-# Check APP_KEY and Generate If Missing
-APP_CONTAINER=$(docker ps --format '{{.Names}}' | grep 'user-service-app')
-APP_KEY=$(docker exec $APP_CONTAINER sh -c "grep '^APP_KEY=' /var/www/html/.env | cut -d '=' -f2 | tr -d ' '")
-
-if [[ -z "$APP_KEY" || "$APP_KEY" == "null" ]]; then
-    echo "🔑 Generating Laravel APP_KEY..."
-    docker exec $APP_CONTAINER php artisan key:generate --force
-fi
-
-# Fix Permissions (Safer Alternative to chmod 777)
-echo "🔧 Setting correct file permissions..."
-docker exec $APP_CONTAINER chown -R www-data:www-data /var/www/html
-docker exec $APP_CONTAINER chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
-
-# Clear and Cache Configurations
-echo "🔄 Clearing and caching config..."
-docker exec $APP_CONTAINER php artisan config:clear
-docker exec $APP_CONTAINER php artisan config:cache
-docker exec $APP_CONTAINER php artisan route:cache
-docker exec $APP_CONTAINER php artisan view:cache
-
-# Ensure Storage Link Exists
-echo "🔗 Creating storage symlink..."
-docker exec $APP_CONTAINER php artisan storage:link || true
-
-# Run Database Migrations
+# Run Laravel Migrations
 echo "🔄 Running database migrations..."
-docker exec $APP_CONTAINER php artisan migrate --force
+docker exec user_service_app php artisan migrate --force
 
 # Restart Services
 echo "🔄 Restarting application..."
-docker restart $APP_CONTAINER
+docker restart user_service_app
 docker restart user_service_nginx
 
 echo "✅ Deployment complete!"
