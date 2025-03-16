@@ -135,7 +135,7 @@ if [ "$USER_EXISTS" -eq "0" ]; then
     GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
     FLUSH PRIVILEGES;"
 else
-    echo "✅ MySQL user '${MYSQL_USER}' already exists. Updating password..."
+    echo "✅ MySQL user '${MYSQL_USER}' already exists. Ensuring correct password..."
     docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
     ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
     FLUSH PRIVILEGES;"
