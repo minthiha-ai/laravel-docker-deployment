@@ -130,7 +130,8 @@ else
     echo "✅ Database ${MYSQL_DATABASE} already exists."
 fi
 
-# Ensure MySQL user has correct permissions
+# Ensure MySQL User Exists & Set Permissions
+echo "🔧 Setting up MySQL user & permissions..."
 docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
 CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
 ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
