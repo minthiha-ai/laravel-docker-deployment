@@ -72,6 +72,27 @@ fi
 docker pull $DOCKER_IMAGE
 docker-compose -f deployment/docker-compose.prod.yml up -d --remove-orphans
 
+# Check MySQL Root Password
+echo "🔍 Checking MySQL root password..."
+MYSQL_CONTAINER="user_service_mysql"
+
+ROOT_ACCESS=$(docker exec $MYSQL_CONTAINER mysql -u root -e "SELECT 1;" 2>&1 || true)
+
+if [[ "$ROOT_ACCESS" == *"Access denied for user"* ]]; then
+    echo "⚠️ MySQL root password is missing! Resetting password..."
+
+    # Reset the MySQL root password inside the container
+    docker exec -i $MYSQL_CONTAINER mysql -u root -e "
+    ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
+    ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
+    FLUSH PRIVILEGES;
+    "
+
+    echo "✅ MySQL root password reset successfully."
+else
+    echo "✅ MySQL root password is already set correctly."
+fi
+
 # Ensure MySQL is Ready
 MYSQL_CONTAINER=$(docker ps --format '{{.Names}}' | grep 'user-service-mysql')
 until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
