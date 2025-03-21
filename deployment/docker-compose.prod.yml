@@ -53,7 +53,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - /var/www/user-service/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
       - app-network
 
