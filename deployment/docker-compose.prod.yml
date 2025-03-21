@@ -7,12 +7,12 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     env_file:
-      - ./src/.env  # ✅ Use relative path
+      - src/.env
     depends_on:
       mysql:
         condition: service_healthy
     volumes:
-      - ./src/.env:/var/www/html/.env  # ✅ Explicitly mount .env
+      - src/.env:/var/www/html/.env
       - app_data:/var/www/html
       - storage_data:/var/www/html/storage
       - logs_data:/var/www/html/storage/logs
@@ -32,7 +32,7 @@ services:
     container_name: user_service_mysql
     restart: unless-stopped
     env_file:
-      - ./deployment/.env.prod  # ✅ Ensure this file exists
+      - deployment/.env.prod  # ✅ Ensure this file exists
     command: --default-authentication-plugin=mysql_native_password
     volumes:
       - laravel_mysql_data:/var/lib/mysql
