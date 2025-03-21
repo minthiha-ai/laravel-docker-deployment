@@ -62,7 +62,14 @@ jobs:
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
-            echo "🚀 Starting Deployment..."
+            set -e  # Exit immediately if a command fails
+
+            echo "🚀 Starting Deployment on DigitalOcean"
+
+            # Set project directory
+            export PROJECT_DIR="/var/www/user-service"
+            echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
+            mkdir -p $PROJECT_DIR && cd $PROJECT_DIR
 
             # Export environment variables
             export DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/user-service-app:latest"
@@ -71,47 +78,121 @@ jobs:
             export MYSQL_USER="${{ secrets.MYSQL_USER }}"
             export MYSQL_PASSWORD="${{ secrets.MYSQL_PASSWORD }}"
 
-            # Set project directory
-            export PROJECT_DIR="/var/www/user-service"
-            echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
-
-            # Ensure project directory exists
-            if [ ! -d "$PROJECT_DIR" ]; then
-              echo "📂 Creating project directory..."
-              sudo mkdir -p $PROJECT_DIR
-              sudo chown -R $(whoami):$(whoami) $PROJECT_DIR
-            else
-              echo "✅ Project directory already exists: $PROJECT_DIR"
-            fi
-
-            cd $PROJECT_DIR
-
-            # Install dependencies if not installed
+            # Ensure Docker is installed
             if ! command -v docker &> /dev/null; then
               echo "🐳 Installing Docker..."
               sudo apt update && sudo apt install -y docker.io docker-compose
-              sudo usermod -aG docker $USER
-              sudo systemctl restart docker
+              sudo systemctl enable docker
+              sudo systemctl start docker
             fi
 
-            # Ensure correct repository state
+            # Pull latest changes
             if [ ! -d ".git" ]; then
-                echo "📥 Cloning Repository..."
-                git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
+              echo "📥 Cloning Repository..."
+              git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
             else
-                echo "📥 Pulling Latest Code..."
-                git reset --hard origin/main
-                git pull --rebase origin main
+              echo "📥 Pulling Latest Code..."
+              git reset --hard origin/main
+              git pull --rebase origin main
             fi
 
-            # Ensure deploy.sh exists & is executable
-            if [ ! -f "deployment/deploy.sh" ]; then
-                echo "❌ Error: deploy.sh not found!"
-                exit 1
+            # Ensure deployment/.env.prod file exists and populate it with necessary values
+            echo "📜 Creating deployment/.env.prod file..."
+            cat > deployment/.env.prod <<EOF
+            MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+            MYSQL_DATABASE=${MYSQL_DATABASE}
+            MYSQL_USER=${MYSQL_USER}
+            MYSQL_PASSWORD=${MYSQL_PASSWORD}
+            EOF
+            echo "✅ .env.prod file created in deployment/"
+
+            # Ensure src/.env file exists and populate it with necessary values
+            echo "📜 Creating .env file..."
+            cat > src/.env <<EOF
+            APP_NAME=LaravelApp
+            APP_ENV=production
+            APP_KEY=
+            APP_DEBUG=false
+            APP_URL=https://yourdomain.com
+
+            DB_CONNECTION=mysql
+            DB_HOST=user_service_mysql
+            DB_PORT=3306
+            DB_DATABASE=${MYSQL_DATABASE}
+            DB_USERNAME=${MYSQL_USER}
+            DB_PASSWORD=${MYSQL_PASSWORD}
+
+            CACHE_DRIVER=file
+            SESSION_DRIVER=database
+            QUEUE_CONNECTION=sync
+            EOF
+            echo "✅ .env file created in src/"
+
+            # Stop old containers and clean up Docker
+            echo "🛑 Stopping old containers..."
+            docker-compose -f deployment/docker-compose.prod.yml down --remove-orphans
+            docker system prune -af  # Clean up old Docker images
+
+            # Pull and start new containers
+            echo "🐳 Pulling latest Docker image..."
+            docker pull $DOCKER_IMAGE
+
+            echo "🐳 Starting new containers..."
+            docker-compose -f deployment/docker-compose.prod.yml up -d --remove-orphans
+
+            # Wait for MySQL to be ready
+            MYSQL_CONTAINER="user_service_mysql"
+            echo "⌛ Waiting for MySQL to be ready..."
+            until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
+                echo "⏳ MySQL is still starting..."
+                sleep 5
+            done
+            echo "✅ MySQL is ready!"
+
+            # Ensure Database Exists
+            echo "🛢 Checking if database exists..."
+            DB_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES LIKE '${MYSQL_DATABASE}';" | grep "${MYSQL_DATABASE}" | wc -l)
+
+            if [ "$DB_EXISTS" -eq "0" ]; then
+                echo "🚀 Creating database: ${MYSQL_DATABASE}"
+                docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE ${MYSQL_DATABASE};"
+            else
+                echo "✅ Database ${MYSQL_DATABASE} already exists!"
             fi
 
-            chmod +x deployment/deploy.sh
-            echo "🚀 Running deploy.sh..."
-            bash deployment/deploy.sh
+            # Ensure MySQL User Exists & Set Permissions
+            echo "🔧 Checking MySQL user permissions..."
+            USER_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -sse "
+            SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '${MYSQL_USER}');")
 
-            echo "✅ Deployment process completed!"
+            if [ "$USER_EXISTS" -eq "0" ]; then
+                echo "🚀 Creating MySQL user '${MYSQL_USER}'..."
+                docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
+                CREATE USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
+                GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
+                FLUSH PRIVILEGES;"
+            else
+                echo "✅ MySQL user '${MYSQL_USER}' already exists. Updating password..."
+                docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
+                ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
+                FLUSH PRIVILEGES;"
+            fi
+
+            # Run key generate
+            echo "🔄 Running key generate..."
+            docker exec user_service_app php artisan key:generate
+
+            # Run Laravel Migrations
+            echo "🔄 Running database migrations..."
+            docker exec user_service_app php artisan migrate --force
+
+            # Fix File Permissions
+            echo "🔧 Fixing storage permissions..."
+            docker exec user_service_app chmod -R 777 storage bootstrap/cache
+
+            # Restart Services
+            echo "🔄 Restarting application..."
+            docker restart user_service_app
+            docker restart user_service_nginx
+
+            echo "✅ Deployment complete!"
