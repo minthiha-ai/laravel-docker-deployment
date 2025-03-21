@@ -21,7 +21,7 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
+      test: ["CMD-SHELL", "php-fpm -t"]
       interval: 10s
       timeout: 5s
       retries: 5
