@@ -63,7 +63,6 @@ jobs:
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
             set -e  # Exit immediately if a command fails
-
             echo "🚀 Starting Deployment on DigitalOcean"
 
             # Set project directory
@@ -96,8 +95,9 @@ jobs:
               git pull --rebase origin main
             fi
 
-            # Ensure deployment/.env.prod file exists and populate it with necessary values
+            # 🔥 **Fix: Ensure deployment/.env.prod is correctly created**
             echo "📜 Creating deployment/.env.prod file..."
+            mkdir -p deployment  # Ensure deployment folder exists
             cat > deployment/.env.prod <<EOF
             MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
             MYSQL_DATABASE=${MYSQL_DATABASE}
@@ -106,8 +106,9 @@ jobs:
             EOF
             echo "✅ .env.prod file created in deployment/"
 
-            # Ensure src/.env file exists and populate it with necessary values
-            echo "📜 Creating .env file..."
+            # 🔥 **Fix: Ensure src/.env is correctly created**
+            echo "📜 Creating src/.env file for Laravel..."
+            mkdir -p src  # Ensure src folder exists
             cat > src/.env <<EOF
             APP_NAME=LaravelApp
             APP_ENV=production
@@ -128,19 +129,19 @@ jobs:
             EOF
             echo "✅ .env file created in src/"
 
-            # Stop old containers and clean up Docker
+            # 🛑 Stop old containers and clean up Docker
             echo "🛑 Stopping old containers..."
             docker-compose -f deployment/docker-compose.prod.yml down --remove-orphans
             docker system prune -af  # Clean up old Docker images
 
-            # Pull and start new containers
+            # 🐳 Pull and start new containers
             echo "🐳 Pulling latest Docker image..."
             docker pull $DOCKER_IMAGE
 
             echo "🐳 Starting new containers..."
             docker-compose -f deployment/docker-compose.prod.yml up -d --remove-orphans
 
-            # Wait for MySQL to be ready
+            # ⏳ Wait for MySQL to be ready
             MYSQL_CONTAINER="user_service_mysql"
             echo "⌛ Waiting for MySQL to be ready..."
             until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
@@ -149,7 +150,7 @@ jobs:
             done
             echo "✅ MySQL is ready!"
 
-            # Ensure Database Exists
+            # 🛢 Ensure Database Exists
             echo "🛢 Checking if database exists..."
             DB_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES LIKE '${MYSQL_DATABASE}';" | grep "${MYSQL_DATABASE}" | wc -l)
 
@@ -160,7 +161,7 @@ jobs:
                 echo "✅ Database ${MYSQL_DATABASE} already exists!"
             fi
 
-            # Ensure MySQL User Exists & Set Permissions
+            # 🔧 Ensure MySQL User Exists & Set Permissions
             echo "🔧 Checking MySQL user permissions..."
             USER_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -sse "
             SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '${MYSQL_USER}');")
@@ -178,25 +179,19 @@ jobs:
                 FLUSH PRIVILEGES;"
             fi
 
-            # Copy .env into the running container
-            docker cp src/.env user_service_app:/var/www/html/.env
-
-            # Restart the container before running Laravel commands
-            docker restart user_service_app
-
-            # Run Laravel Key Generate
+            # 🔄 Generate Laravel App Key
             echo "🔄 Running key generate..."
-            docker exec user_service_app php artisan key:generate --force
+            docker exec user_service_app php artisan key:generate
 
-            # Run Laravel Migrations
+            # 🔄 Run Laravel Migrations
             echo "🔄 Running database migrations..."
             docker exec user_service_app php artisan migrate --force
 
-            # Fix File Permissions
+            # 🔧 Fix File Permissions
             echo "🔧 Fixing storage permissions..."
             docker exec user_service_app chmod -R 777 storage bootstrap/cache
 
-            # Restart Services
+            # 🔄 Restart Services
             echo "🔄 Restarting application..."
             docker restart user_service_app
             docker restart user_service_nginx
