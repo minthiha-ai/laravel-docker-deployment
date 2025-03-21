@@ -178,9 +178,15 @@ jobs:
                 FLUSH PRIVILEGES;"
             fi
 
-            # Run key generate
+            # Copy .env into the running container
+            docker cp src/.env user_service_app:/var/www/html/.env
+
+            # Restart the container before running Laravel commands
+            docker restart user_service_app
+
+            # Run Laravel Key Generate
             echo "🔄 Running key generate..."
-            docker exec user_service_app php artisan key:generate
+            docker exec user_service_app php artisan key:generate --force
 
             # Run Laravel Migrations
             echo "🔄 Running database migrations..."
