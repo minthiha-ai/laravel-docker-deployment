@@ -1,45 +1,50 @@
 services:
   app:
+    image: ace009/user-service-app:latest
+    container_name: user_service_app
     build:
       context: ./src
       dockerfile: Dockerfile
     restart: unless-stopped
-    networks:
-        - docker-network
     ports:
-      - 9001:9000
+      - 9000:9000
     depends_on:
       - db
-
+    env_file:
+      - ./src/.env
+    volumes:
+      - storage:/usr/share/nginx/html/storage:rw
+      - public:/usr/share/nginx/html/public:rw
   queue-worker:
     build:
       context: ./src
       dockerfile: Dockerfile
     restart: unless-stopped
-    networks:
-      - docker-network
+    command: php artisan queue:work
+    environment:
+      IS_WORKER: "true"
+    env_file:
+      - ./src/.env
     depends_on:
       - db
-    command: php artisan queue:work
-
-  caddy:
-    image: caddy:latest
-    ports:
-      - 89:80
-      - 443:443
+      - redis
     volumes:
-      - ./src:/var/www/html
-      - ./Caddyfile:/etc/caddy/Caddyfile
-    networks:
-      - docker-network
-    depends_on:
-      - app
+      - storage:/usr/share/nginx/html/storage:rw
+      - public:/usr/share/nginx/html/public:rw
+  nginx:
+    image: nginx:latest
+    ports:
+      - 80:80
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - storage:/usr/share/nginx/html/storage:rw
+      - public:/usr/share/nginx/html/public:ro
 
   db:
     image: bitnami/postgresql:16.3.0
     platform: linux/amd64
     ports:
-      - 5433:5432
+      - 5432:5432
     restart: always
     volumes:
       - db-data:/bitnami/postgresql
@@ -47,9 +52,6 @@ services:
       - POSTGRESQL_DATABASE=${POSTGRESQL_DATABASE}
       - POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME}
       - POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD}
-    networks:
-      - docker-network
-
   redis:
     image: bitnami/redis:7.2
     platform: linux/amd64
@@ -64,9 +66,7 @@ services:
       - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
 
 volumes:
+  storage:
+  public:
   db-data:
   redis-data:
-
-networks:
-  docker-network:
-    driver: bridge

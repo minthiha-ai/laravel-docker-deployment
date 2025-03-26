@@ -1,0 +1,55 @@
+#!/bin/bash
+
+main() {
+    if [ "$IS_WORKER" = "true" ]; then
+        exec "$@"
+    else
+        prepare_file_permissions
+        prepare_storage
+        wait_for_db
+        run_migrations
+        optimize_app
+        run_server "$@"
+    fi
+}
+
+prepare_file_permissions() {
+    chmod a+x ./artisan
+}
+
+prepare_storage() {
+    mkdir -p storage/framework/cache/data
+    mkdir -p storage/framework/sessions
+    mkdir -p storage/framework/views
+
+    chown -R www-data:www-data storage
+    chmod -R 775 storage
+
+    php artisan storage:link
+}
+
+wait_for_db() {
+    echo "Waiting for DB to be ready..."
+    until php artisan migrate:status >/dev/null 2>&1; do
+        sleep 1
+    done
+}
+
+run_migrations() {
+    if php artisan migrate:status | grep -q "No migrations found"; then
+        echo "No migrations to run"
+    else
+        php artisan migrate --force
+    fi
+}
+
+optimize_app() {
+    php artisan optimize:clear
+    php artisan optimize
+}
+
+run_server() {
+    exec /usr/local/bin/docker-php-entrypoint "$@"
+}
+
+main "$@"

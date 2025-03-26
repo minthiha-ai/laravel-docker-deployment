@@ -1,248 +1,120 @@
-name: Laravel Full CI/CD with Docker & DigitalOcean
+name: Laravel CI/CD for API (Docker + DigitalOcean)
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 env:
-  APP_NAME: laravel-app
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/user-service-app
   PROJECT_DIR: /var/www/user-service
 
 jobs:
-  build-and-test:
-    name: 🏗 Build, Test & Push Docker Image
+  build-and-push:
+    name: 🐳 Build & Push Docker Image
     runs-on: ubuntu-latest
 
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@v3
 
-      - name: 🛠 Set up PHP & Composer
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          tools: composer
-
-      - name: 📦 Install Dependencies
-        run: |
-          cd src
-          composer install --prefer-dist --no-interaction --optimize-autoloader
-
-      - name: 🐳 Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: 🔑 Log in to Docker Hub
+      - name: 🔑 Docker Login
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: 📦 Build and Push Docker Image (With Caching)
+      - name: 🔧 Build and Push Docker Image
         run: |
-          docker build --cache-from=type=registry,ref=$DOCKER_IMAGE:latest \
-          --build-arg APP_ENV=production -t $DOCKER_IMAGE:latest -f php/Dockerfile .
+          docker build -t $DOCKER_IMAGE:latest -f src/Dockerfile ./src
           docker push $DOCKER_IMAGE:latest
 
   deploy:
-    name: 🚀 Fully Automated Deployment to DigitalOcean
+    name: 🚀 Deploy to DigitalOcean
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: build-and-push
 
     steps:
-      - name: 📤 Deploy & Setup Server via SSH
+      - name: 📤 SSH & Deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.DO_SERVER_IP }}
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
-            set -e  # Exit immediately if a command fails
-            echo "🚀 Starting Deployment on DigitalOcean"
-
-            # Set project directory
-            export PROJECT_DIR="/var/www/user-service"
-            echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
+            set -e
+            echo "📁 Setting up $PROJECT_DIR"
             mkdir -p $PROJECT_DIR && cd $PROJECT_DIR
 
-            # Export environment variables
-            export DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/user-service-app:latest"
-            export MYSQL_ROOT_PASSWORD="${{ secrets.MYSQL_ROOT_PASSWORD }}"
-            export MYSQL_DATABASE="${{ secrets.MYSQL_DATABASE }}"
-            export MYSQL_USER="${{ secrets.MYSQL_USER }}"
-            export MYSQL_PASSWORD="${{ secrets.MYSQL_PASSWORD }}"
-
-            # Ensure Docker is installed
-            if ! command -v docker &> /dev/null; then
-              echo "🐳 Installing Docker..."
-              sudo apt update && sudo apt install -y docker.io docker-compose
-              sudo systemctl enable docker
-              sudo systemctl start docker
-            fi
-
-            # Pull latest changes
+            echo "📦 Cloning / Pulling latest code..."
             if [ ! -d ".git" ]; then
-              echo "📥 Cloning Repository..."
               git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
             else
-              echo "📥 Pulling Latest Code..."
-              git reset --hard origin/main
-              git pull --rebase origin main
+              git reset --hard
+              git pull origin main
             fi
 
-            # 🔥 **Fix: Ensure deployment/.env.prod is correctly created**
-            echo "📜 Creating deployment/.env.prod file..."
-            mkdir -p deployment  # Ensure deployment folder exists
-            cat > deployment/.env.prod <<EOF
-            MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-            MYSQL_DATABASE=${MYSQL_DATABASE}
-            MYSQL_USER=${MYSQL_USER}
-            MYSQL_PASSWORD=${MYSQL_PASSWORD}
+            echo "📜 Writing root .env for docker-compose"
+            cat > .env <<EOF
+            POSTGRESQL_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
+            POSTGRESQL_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
+            POSTGRESQL_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
             EOF
-            echo "✅ .env.prod file created in deployment/"
 
-            # 🔥 **Fix: Ensure src/.env is correctly created**
-            echo "📜 Creating src/.env file for Laravel..."
-            mkdir -p src  # Ensure src folder exists
+            echo "📜 Writing Laravel .env file"
             cat > src/.env <<EOF
-            APP_NAME=Laravel
+            APP_NAME=UserService
             APP_ENV=production
             APP_KEY=
-            APP_DEBUG=true
-            APP_TIMEZONE=UTC
-            APP_URL=http://localhost
-
-            APP_LOCALE=en
-            APP_FALLBACK_LOCALE=en
-            APP_FAKER_LOCALE=en_US
-
-            APP_MAINTENANCE_DRIVER=file
-
-            PHP_CLI_SERVER_WORKERS=4
-
-            BCRYPT_ROUNDS=12
+            APP_DEBUG=false
+            APP_URL=http://${{ secrets.DO_SERVER_IP }}
 
             LOG_CHANNEL=stack
-            LOG_STACK=single
-            LOG_DEPRECATIONS_CHANNEL=null
             LOG_LEVEL=debug
 
-            DB_CONNECTION=mysql
-            DB_HOST=user_service_mysql
-            DB_PORT=3306
-            DB_DATABASE=${MYSQL_DATABASE}
-            DB_USERNAME=${MYSQL_USER}
-            DB_PASSWORD=${MYSQL_PASSWORD}
-
-            SESSION_DRIVER=database
-            SESSION_LIFETIME=120
-            SESSION_ENCRYPT=false
-            SESSION_PATH=/
-            SESSION_DOMAIN=null
-
-            BROADCAST_CONNECTION=log
-            FILESYSTEM_DISK=local
-            QUEUE_CONNECTION=database
-
-            CACHE_STORE=database
-            CACHE_PREFIX=
-
-            MEMCACHED_HOST=127.0.0.1
+            DB_CONNECTION=pgsql
+            DB_HOST=db
+            DB_PORT=5432
+            DB_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
+            DB_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
+            DB_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
 
             REDIS_CLIENT=phpredis
-            REDIS_HOST=user-service-redis
-            REDIS_PASSWORD=null
+            REDIS_HOST=redis
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
             REDIS_PORT=6379
 
-            MAIL_MAILER=log
-            MAIL_SCHEME=null
-            MAIL_HOST=127.0.0.1
-            MAIL_PORT=2525
-            MAIL_USERNAME=null
-            MAIL_PASSWORD=null
-            MAIL_FROM_ADDRESS="hello@example.com"
-            MAIL_FROM_NAME="${APP_NAME}"
-
-            AWS_ACCESS_KEY_ID=
-            AWS_SECRET_ACCESS_KEY=
-            AWS_DEFAULT_REGION=us-east-1
-            AWS_BUCKET=
-            AWS_USE_PATH_STYLE_ENDPOINT=false
-
-            VITE_APP_NAME="${APP_NAME}"
+            CACHE_STORE=redis
+            QUEUE_CONNECTION=database
+            SESSION_DRIVER=database
             EOF
-            echo "✅ .env file created in src/"
 
-            # 🛑 Stop old containers and clean up Docker
-            echo "🛑 Stopping old containers..."
-            docker-compose -f deployment/docker-compose.prod.yml down --remove-orphans
-            docker system prune -af  # Clean up old Docker images
+            echo "🧼 Cleaning up Docker"
+            docker compose -f docker-compose.prod.yml down --remove-orphans
+            docker system prune -af
 
-            # 🐳 Pull and start new containers
-            echo "🐳 Pulling latest Docker image..."
-            docker pull $DOCKER_IMAGE
+            echo "📥 Pulling latest Docker image"
+            docker pull $DOCKER_IMAGE:latest
 
-            echo "🐳 Starting new containers..."
-            docker-compose -f deployment/docker-compose.prod.yml up -d --remove-orphans
+            echo "🚀 Starting containers"
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
-            # ⏳ Wait for MySQL to be ready
-            MYSQL_CONTAINER="user_service_mysql"
-            echo "⌛ Waiting for MySQL to be ready..."
-            until docker exec $MYSQL_CONTAINER mysqladmin ping -h "localhost" --silent; do
-                echo "⏳ MySQL is still starting..."
-                sleep 5
+            echo "⏱ Waiting for PostgreSQL..."
+            until docker exec user_service_app php artisan migrate:status > /dev/null 2>&1; do
+              echo "⌛ DB not ready..."
+              sleep 5
             done
-            echo "✅ MySQL is ready!"
 
-            # 🛢 Ensure Database Exists
-            echo "🛢 Checking if database exists..."
-            DB_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES LIKE '${MYSQL_DATABASE}';" | grep "${MYSQL_DATABASE}" | wc -l)
+            echo "🔑 Generating App Key"
+            docker exec user_service_app php artisan key:generate --force
 
-            if [ "$DB_EXISTS" -eq "0" ]; then
-                echo "🚀 Creating database: ${MYSQL_DATABASE}"
-                docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE ${MYSQL_DATABASE};"
-            else
-                echo "✅ Database ${MYSQL_DATABASE} already exists!"
-            fi
-
-            # 🔧 Ensure MySQL User Exists & Set Permissions
-            echo "🔧 Checking MySQL user permissions..."
-            USER_EXISTS=$(docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -sse "
-            SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '${MYSQL_USER}');")
-
-            if [ "$USER_EXISTS" -eq "0" ]; then
-                echo "🚀 Creating MySQL user '${MYSQL_USER}'..."
-                docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
-                CREATE USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
-                GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
-                FLUSH PRIVILEGES;"
-            else
-                echo "✅ MySQL user '${MYSQL_USER}' already exists. Updating password..."
-                docker exec $MYSQL_CONTAINER mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "
-                ALTER USER '${MYSQL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
-                FLUSH PRIVILEGES;"
-            fi
-
-            # 🔄 Generate Laravel App Key
-            echo "🔄 Running key generate..."
-            docker exec user_service_app php artisan key:generate
-
-            # 🔄 Run Laravel Migrations
-            echo "🔄 Running database migrations..."
+            echo "🛠 Running migrations"
             docker exec user_service_app php artisan migrate --force
 
-            # 🔧 Fix File Permissions
-            echo "🔧 Fixing storage permissions..."
-            docker exec user_service_app chmod -R 777 storage bootstrap/cache
+            echo "🧼 Clearing and caching config"
+            docker exec user_service_app php artisan optimize:clear
+            docker exec user_service_app php artisan config:cache
 
-            # 🔄 Restart Services
-            echo "🔄 Restarting application..."
-            docker restart user_service_app
-            docker restart user_service_nginx
-
-            echo "✅ Deployment complete!"
+            echo "✅ Deployment Complete!"
