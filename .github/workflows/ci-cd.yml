@@ -93,14 +93,14 @@ jobs:
               git pull origin main
             fi
 
+            if ! command -v envsubst &> /dev/null; then
+              echo "🔧 Installing envsubst..."
+              sudo apt update && sudo apt install -y gettext
+            fi
+
             echo "📜 Checking .env file for docker-compose"
             if [ ! -f ".env" ]; then
-              cat > .env <<EOF
-            POSTGRESQL_DATABASE=${POSTGRESQL_DATABASE}
-            POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME}
-            POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD}
-            REDIS_PASSWORD=${REDIS_PASSWORD}
-            EOF
+              envsubst < .env.example > .env
               echo "✅ .env created"
             else
               echo "✅ .env already exists, skipping..."
@@ -108,32 +108,7 @@ jobs:
 
             echo "📜 Checking Laravel src/.env file"
             if [ ! -f "src/.env" ]; then
-              cat > src/.env <<EOF
-            APP_NAME=UserService
-            APP_ENV=production
-            APP_KEY=
-            APP_DEBUG=false
-            APP_URL=http://${DO_SERVER_IP}
-
-            LOG_CHANNEL=stack
-            LOG_LEVEL=debug
-
-            DB_CONNECTION=pgsql
-            DB_HOST=db
-            DB_PORT=5432
-            DB_DATABASE=${POSTGRESQL_DATABASE}
-            DB_USERNAME=${POSTGRESQL_USERNAME}
-            DB_PASSWORD=${POSTGRESQL_PASSWORD}
-
-            REDIS_CLIENT=phpredis
-            REDIS_HOST=redis
-            REDIS_PASSWORD=${REDIS_PASSWORD}
-            REDIS_PORT=6379
-
-            CACHE_STORE=redis
-            QUEUE_CONNECTION=database
-            SESSION_DRIVER=database
-            EOF
+              envsubst < src/.env.example > src/.env
               echo "✅ Laravel .env created"
             else
               echo "✅ Laravel .env already exists, skipping..."
