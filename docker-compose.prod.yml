@@ -1,148 +1,72 @@
-name: Laravel CI/CD for API (Docker + DigitalOcean)
+services:
+  app:
+    image: ace009/user-service-app:latest
+    container_name: user_service_app
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - 9000:9000
+    depends_on:
+      - db
+    env_file:
+      - ./src/.env
+    volumes:
+      - storage:/usr/share/nginx/html/storage:rw
+      - public:/usr/share/nginx/html/public:rw
+  queue-worker:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: php artisan queue:work
+    environment:
+      IS_WORKER: "true"
+    env_file:
+      - ./src/.env
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - storage:/usr/share/nginx/html/storage:rw
+      - public:/usr/share/nginx/html/public:rw
+  nginx:
+    image: nginx:latest
+    ports:
+      - 80:80
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - storage:/usr/share/nginx/html/storage:rw
+      - public:/usr/share/nginx/html/public:ro
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  db:
+    image: bitnami/postgresql:16.3.0
+    platform: linux/amd64
+    ports:
+      - 5432:5432
+    restart: always
+    volumes:
+      - db-data:/bitnami/postgresql
+    environment:
+      - POSTGRESQL_DATABASE=${POSTGRESQL_DATABASE}
+      - POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME}
+      - POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD}
+  redis:
+    image: bitnami/redis:7.2
+    platform: linux/amd64
+    ports:
+      - 6379:6379
+    restart: always
+    volumes:
+      - redis-data:/bitnami/redis/data
+    environment:
+      - ALLOW_EMPTY_PASSWORD=no
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
 
-env:
-  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/user-service-app
-  PROJECT_DIR: /var/www/user-service
-
-jobs:
-  build-and-push:
-    name: 🐳 Build & Push Docker Image
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v3
-
-      - name: 🔑 Docker Login
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: 🔧 Build and Push Docker Image
-        run: |
-          docker build -t $DOCKER_IMAGE:latest -f src/Dockerfile ./src
-          docker push $DOCKER_IMAGE:latest
-
-  deploy:
-    name: 🚀 Deploy to DigitalOcean
-    runs-on: ubuntu-latest
-    needs: build-and-push
-
-    steps:
-      - name: 📤 SSH & Deploy
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.DO_SERVER_IP }}
-          username: ${{ secrets.DO_SSH_USER }}
-          key: ${{ secrets.DO_SSH_KEY }}
-          script: |
-            set -e
-
-            echo "📁 Setting up $PROJECT_DIR"
-            if [ ! -d "$PROJECT_DIR" ]; then
-              mkdir -p $PROJECT_DIR
-            fi
-            cd $PROJECT_DIR
-
-            echo "📦 Pulling latest code safely..."
-            if [ ! -d ".git" ]; then
-              echo "🌀 Cloning repo into temp and syncing..."
-              git clone https://github.com/minthiha-ai/laravel-docker-deployment.git /tmp/deploy-temp
-              cp -rT /tmp/deploy-temp ./
-              rm -rf /tmp/deploy-temp
-            else
-              echo "🔄 Pulling latest changes"
-              git reset --hard
-              git pull origin main
-            fi
-
-            echo "📜 Checking .env file for docker-compose"
-            if [ ! -f ".env" ]; then
-              cat > .env <<EOF
-              POSTGRESQL_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
-              POSTGRESQL_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
-              POSTGRESQL_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
-              REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-              EOF
-              echo "✅ .env created"
-            else
-              echo "✅ .env already exists, skipping..."
-            fi
-
-            echo "📜 Checking Laravel src/.env file"
-            if [ ! -f "src/.env" ]; then
-              cat > src/.env <<EOF
-              APP_NAME=UserService
-              APP_ENV=production
-              APP_KEY=
-              APP_DEBUG=false
-              APP_URL=http://${{ secrets.DO_SERVER_IP }}
-
-              LOG_CHANNEL=stack
-              LOG_LEVEL=debug
-
-              DB_CONNECTION=pgsql
-              DB_HOST=db
-              DB_PORT=5432
-              DB_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
-              DB_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
-              DB_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
-
-              REDIS_CLIENT=phpredis
-              REDIS_HOST=redis
-              REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-              REDIS_PORT=6379
-
-              CACHE_STORE=redis
-              QUEUE_CONNECTION=database
-              SESSION_DRIVER=database
-              EOF
-              echo "✅ Laravel .env created"
-            else
-              echo "✅ Laravel .env already exists, skipping..."
-            fi
-
-            echo "🛑 Stopping running containers"
-            docker compose -f docker-compose.prod.yml down --remove-orphans
-
-            echo "🧹 Cleaning up Docker system"
-            docker system prune -af
-
-            echo "🐳 Pulling latest image"
-            docker pull $DOCKER_IMAGE:latest
-
-            echo "🚀 Starting containers"
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-            echo "⏳ Waiting for PostgreSQL to be ready..."
-            until docker exec user_service_app php artisan migrate:status > /dev/null 2>&1; do
-              echo "⌛ Waiting..."
-              sleep 5
-            done
-            echo "✅ DB is ready!"
-
-            echo "🔐 Checking APP_KEY"
-            KEY=$(docker exec user_service_app php -r "echo env('APP_KEY');")
-            if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
-              echo "⚡ No APP_KEY found. Generating..."
-              docker exec user_service_app php artisan key:generate --force
-            else
-              echo "✅ APP_KEY already set."
-            fi
-
-            echo "📦 Running migrations"
-            docker exec user_service_app php artisan migrate --force
-
-            echo "🔧 Optimizing config & routes"
-            docker exec user_service_app php artisan optimize:clear
-            docker exec user_service_app php artisan config:cache
-            docker exec user_service_app php artisan route:cache
-
-            echo "✅ Deployment Completed!"
+volumes:
+  storage:
+  public:
+  db-data:
+  redis-data:
