@@ -68,7 +68,7 @@ jobs:
             cd $PROJECT_DIR
 
             # Export environment variables
-            export DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/user-service-app:latest"
+            echo "📦 Using Docker image: $DOCKER_IMAGE"
             export DO_SERVER_IP="${{ secrets.DO_SERVER_IP }}"
             export POSTGRESQL_DATABASE="${{ secrets.POSTGRESQL_DATABASE }}"
             export POSTGRESQL_USERNAME="${{ secrets.POSTGRESQL_USERNAME }}"
