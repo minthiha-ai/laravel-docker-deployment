@@ -19,6 +19,20 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@v3
 
+      - name: 🛠 Set up PHP & Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+
+      - name: 📦 Install Dependencies
+        run: |
+          cd src
+          composer install --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: 🔑 Docker Login
         uses: docker/login-action@v2
         with:
@@ -46,17 +60,33 @@ jobs:
             set -e
 
             echo "📁 Setting up $PROJECT_DIR"
+            export PROJECT_DIR="/var/www/user-service"
+            echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
             if [ ! -d "$PROJECT_DIR" ]; then
               mkdir -p $PROJECT_DIR
             fi
             cd $PROJECT_DIR
 
+            # Export environment variables
+            export DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/user-service-app:latest"
+            export DO_SERVER_IP="${{ secrets.DO_SERVER_IP }}"
+            export POSTGRESQL_DATABASE="${{ secrets.POSTGRESQL_DATABASE }}"
+            export POSTGRESQL_USERNAME="${{ secrets.POSTGRESQL_USERNAME }}"
+            export POSTGRESQL_PASSWORD="${{ secrets.POSTGRESQL_PASSWORD }}"
+            export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
+
+            # Ensure Docker is installed
+            if ! command -v docker &> /dev/null; then
+              echo "🐳 Installing Docker..."
+              sudo apt update && sudo apt install -y docker.io docker-compose
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            fi
+
             echo "📦 Pulling latest code safely..."
             if [ ! -d ".git" ]; then
               echo "🌀 Cloning repo into temp and syncing..."
-              git clone https://github.com/minthiha-ai/laravel-docker-deployment.git /tmp/deploy-temp
-              cp -rT /tmp/deploy-temp ./
-              rm -rf /tmp/deploy-temp
+              git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
             else
               echo "🔄 Pulling latest changes"
               git reset --hard
@@ -66,10 +96,10 @@ jobs:
             echo "📜 Checking .env file for docker-compose"
             if [ ! -f ".env" ]; then
               cat > .env <<EOF
-              POSTGRESQL_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
-              POSTGRESQL_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
-              POSTGRESQL_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
-              REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+              POSTGRESQL_DATABASE=${POSTGRESQL_DATABASE}
+              POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME}
+              POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD}
+              REDIS_PASSWORD=${REDIS_PASSWORD}
               EOF
               echo "✅ .env created"
             else
@@ -83,7 +113,7 @@ jobs:
               APP_ENV=production
               APP_KEY=
               APP_DEBUG=false
-              APP_URL=http://${{ secrets.DO_SERVER_IP }}
+              APP_URL=http://${DO_SERVER_IP}
 
               LOG_CHANNEL=stack
               LOG_LEVEL=debug
@@ -91,13 +121,13 @@ jobs:
               DB_CONNECTION=pgsql
               DB_HOST=db
               DB_PORT=5432
-              DB_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
-              DB_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
-              DB_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
+              DB_DATABASE=${POSTGRESQL_DATABASE}
+              DB_USERNAME=${POSTGRESQL_USERNAME}
+              DB_PASSWORD=${POSTGRESQL_PASSWORD}
 
               REDIS_CLIENT=phpredis
               REDIS_HOST=redis
-              REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+              REDIS_PASSWORD=${REDIS_PASSWORD}
               REDIS_PORT=6379
 
               CACHE_STORE=redis
