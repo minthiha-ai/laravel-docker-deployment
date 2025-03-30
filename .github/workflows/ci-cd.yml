@@ -56,24 +56,18 @@ jobs:
           host: ${{ secrets.DO_SERVER_IP }}
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
+          envs: DOCKER_IMAGE,PROJECT_DIR,POSTGRESQL_DATABASE,POSTGRESQL_USERNAME,POSTGRESQL_PASSWORD,REDIS_PASSWORD,DO_SERVER_IP
           script: |
             set -e
 
             echo "📁 Setting up $PROJECT_DIR"
-            export PROJECT_DIR="/var/www/user-service"
             echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
             if [ ! -d "$PROJECT_DIR" ]; then
               mkdir -p $PROJECT_DIR
             fi
             cd $PROJECT_DIR
 
-            # Export environment variables
             echo "📦 Using Docker image: $DOCKER_IMAGE"
-            export DO_SERVER_IP="${{ secrets.DO_SERVER_IP }}"
-            export POSTGRESQL_DATABASE="${{ secrets.POSTGRESQL_DATABASE }}"
-            export POSTGRESQL_USERNAME="${{ secrets.POSTGRESQL_USERNAME }}"
-            export POSTGRESQL_PASSWORD="${{ secrets.POSTGRESQL_PASSWORD }}"
-            export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
 
             # Ensure Docker is installed
             if ! command -v docker &> /dev/null; then
@@ -116,7 +110,6 @@ jobs:
 
             echo "🛑 Stopping running containers"
             docker-compose -f docker-compose.prod.yml down --remove-orphans
-
 
             echo "🧹 Cleaning up Docker system"
             docker system prune -af
