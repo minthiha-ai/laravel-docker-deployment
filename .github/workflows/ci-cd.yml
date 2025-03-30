@@ -66,11 +66,11 @@ jobs:
             echo "📜 Checking .env file for docker-compose"
             if [ ! -f ".env" ]; then
               cat > .env <<EOF
-POSTGRESQL_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
-POSTGRESQL_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
-POSTGRESQL_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
-REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-EOF
+              POSTGRESQL_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
+              POSTGRESQL_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
+              POSTGRESQL_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
+              REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+              EOF
               echo "✅ .env created"
             else
               echo "✅ .env already exists, skipping..."
@@ -79,31 +79,31 @@ EOF
             echo "📜 Checking Laravel src/.env file"
             if [ ! -f "src/.env" ]; then
               cat > src/.env <<EOF
-APP_NAME=UserService
-APP_ENV=production
-APP_KEY=
-APP_DEBUG=false
-APP_URL=http://${{ secrets.DO_SERVER_IP }}
+              APP_NAME=UserService
+              APP_ENV=production
+              APP_KEY=
+              APP_DEBUG=false
+              APP_URL=http://${{ secrets.DO_SERVER_IP }}
 
-LOG_CHANNEL=stack
-LOG_LEVEL=debug
+              LOG_CHANNEL=stack
+              LOG_LEVEL=debug
 
-DB_CONNECTION=pgsql
-DB_HOST=db
-DB_PORT=5432
-DB_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
-DB_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
-DB_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
+              DB_CONNECTION=pgsql
+              DB_HOST=db
+              DB_PORT=5432
+              DB_DATABASE=${{ secrets.POSTGRESQL_DATABASE }}
+              DB_USERNAME=${{ secrets.POSTGRESQL_USERNAME }}
+              DB_PASSWORD=${{ secrets.POSTGRESQL_PASSWORD }}
 
-REDIS_CLIENT=phpredis
-REDIS_HOST=redis
-REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-REDIS_PORT=6379
+              REDIS_CLIENT=phpredis
+              REDIS_HOST=redis
+              REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+              REDIS_PORT=6379
 
-CACHE_STORE=redis
-QUEUE_CONNECTION=database
-SESSION_DRIVER=database
-EOF
+              CACHE_STORE=redis
+              QUEUE_CONNECTION=database
+              SESSION_DRIVER=database
+              EOF
               echo "✅ Laravel .env created"
             else
               echo "✅ Laravel .env already exists, skipping..."
