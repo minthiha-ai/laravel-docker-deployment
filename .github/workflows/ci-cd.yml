@@ -115,7 +115,8 @@ jobs:
             fi
 
             echo "🛑 Stopping running containers"
-            docker compose -f docker-compose.prod.yml down --remove-orphans
+            docker-compose -f docker-compose.prod.yml down --remove-orphans
+
 
             echo "🧹 Cleaning up Docker system"
             docker system prune -af
@@ -124,7 +125,7 @@ jobs:
             docker pull $DOCKER_IMAGE:latest
 
             echo "🚀 Starting containers"
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker-compose -f docker-compose.prod.yml up -d --remove-orphans
 
             echo "⏳ Waiting for PostgreSQL to be ready..."
             until docker exec user_service_app php artisan migrate:status > /dev/null 2>&1; do
