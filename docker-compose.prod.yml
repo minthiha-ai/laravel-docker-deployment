@@ -11,7 +11,7 @@ services:
     depends_on:
       - db
     volumes:
-      - ./src/.env:/usr/share/nginx/html/.env:ro
+      - ./src/.env:/usr/share/nginx/html/.env:rw
       - storage:/usr/share/nginx/html/storage:rw
       - public:/usr/share/nginx/html/public:rw
   queue-worker:
@@ -28,7 +28,7 @@ services:
       - db
       - redis
     volumes:
-      - ./src/.env:/usr/share/nginx/html/.env:ro
+      - ./src/.env:/usr/share/nginx/html/.env:rw
       - storage:/usr/share/nginx/html/storage:rw
       - public:/usr/share/nginx/html/public:rw
   nginx:
