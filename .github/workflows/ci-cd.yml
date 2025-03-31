@@ -118,14 +118,17 @@ jobs:
             echo "🚀 Starting containers"
             docker-compose -f docker-compose.prod.yml up -d --remove-orphans
 
-            echo "🔐 Checking APP_KEY"
-            KEY=$(docker exec user_service_app php -r "echo env('APP_KEY');")
-            if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
-              echo "⚡ No APP_KEY found. Generating..."
-              docker exec user_service_app php artisan key:generate --force
-            else
-              echo "✅ APP_KEY already set."
-            fi
+            # echo "🔐 Checking APP_KEY"
+            # KEY=$(docker exec user_service_app php -r "echo env('APP_KEY');")
+            # if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
+            #   echo "⚡ No APP_KEY found. Generating..."
+            #   docker exec user_service_app php artisan key:generate --force
+            # else
+            #   echo "✅ APP_KEY already set."
+            # fi
+
+            echo "🔐 Generating APP_KEY (safe to run multiple times)"
+            docker exec user_service_app php artisan key:generate --force
 
             echo "⏳ Waiting for Laravel to be ready..."
             attempts=0
