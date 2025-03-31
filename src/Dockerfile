@@ -20,6 +20,8 @@ WORKDIR /usr/share/nginx/html/
 
 COPY . ./
 
+COPY .env .env
+
 # You could optionally exclude .env from COPY and bind-mount it
 
 RUN sed 's_@php artisan package:discover_/bin/true_;' -i composer.json \
