@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     volumes:
-      - ./src/.env:/usr/share/nginx/html/.env:ro
+      - ./src/.env:/usr/share/nginx/html/.env:rw
     networks:
         - docker-network
     ports:

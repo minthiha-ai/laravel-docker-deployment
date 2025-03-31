@@ -10,9 +10,8 @@ services:
       - 9000:9000
     depends_on:
       - db
-    env_file:
-      - ./src/.env
     volumes:
+      - ./src/.env:/usr/share/nginx/html/.env:ro
       - storage:/usr/share/nginx/html/storage:rw
       - public:/usr/share/nginx/html/public:rw
   queue-worker:
@@ -29,6 +28,7 @@ services:
       - db
       - redis
     volumes:
+      - ./src/.env:/usr/share/nginx/html/.env:ro
       - storage:/usr/share/nginx/html/storage:rw
       - public:/usr/share/nginx/html/public:rw
   nginx:
