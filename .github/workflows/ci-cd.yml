@@ -25,10 +25,12 @@ jobs:
           php-version: '8.2'
           tools: composer
 
-      - name: 📦 Install Dependencies
+      - name: 📦 Install PHP Dependencies
         run: |
+          echo "📦 Installing PHP dependencies via Composer..."
           cd src
           composer install --prefer-dist --no-interaction --optimize-autoloader
+          echo "✅ Composer dependencies installed"
 
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -41,8 +43,12 @@ jobs:
 
       - name: 🔧 Build and Push Docker Image
         run: |
+          echo "🔧 Building Docker image from src/Dockerfile..."
           docker build -t $DOCKER_IMAGE:latest -f src/Dockerfile ./src
+          echo "✅ Docker image built"
+          echo "🚀 Pushing Docker image to Docker Hub..."
           docker push $DOCKER_IMAGE:latest
+          echo "✅ Docker image pushed"
 
   deploy:
     name: 🚀 Deploy to DigitalOcean
@@ -60,69 +66,85 @@ jobs:
           script: |
             set -e
 
-            echo "📂 Setting up $PROJECT_DIR"
+            echo "📂 Creating project directory at $PROJECT_DIR..."
             mkdir -p $PROJECT_DIR && cd $PROJECT_DIR
+            echo "✅ Moved into project directory"
 
-            echo "📦 Using Docker image: $DOCKER_IMAGE"
+            echo "📦 Docker image: $DOCKER_IMAGE"
 
-            # Ensure Docker is installed
+            echo "🔍 Checking Docker installation..."
             if ! command -v docker &> /dev/null; then
-              echo "🐳 Installing Docker..."
+              echo "🐳 Installing Docker and docker-compose..."
               sudo apt update && sudo apt install -y docker.io docker-compose
               sudo systemctl enable docker
               sudo systemctl start docker
+              echo "✅ Docker installed"
+            else
+              echo "✅ Docker already installed"
             fi
 
-            # Pull latest repo code
+            echo "🔄 Cloning or updating the repo..."
             if [ ! -d ".git" ]; then
-              echo "🌀 Cloning repository..."
               git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
+              echo "✅ Repository cloned"
             else
-              echo "🔄 Updating code..."
               git reset --hard
               git pull origin main
+              echo "✅ Code updated"
             fi
 
-            # Ensure envsubst is available
             if ! command -v envsubst &> /dev/null; then
-              echo "🔧 Installing envsubst..."
+              echo "🔧 Installing envsubst for template rendering..."
               sudo apt update && sudo apt install -y gettext
+              echo "✅ envsubst installed"
+            else
+              echo "✅ envsubst already installed"
             fi
 
-            echo "📜 Exporting secrets for envsubst"
+            echo "📜 Exporting environment variables for substitution..."
             export POSTGRESQL_DATABASE="${POSTGRESQL_DATABASE}"
             export POSTGRESQL_USERNAME="${POSTGRESQL_USERNAME}"
             export POSTGRESQL_PASSWORD="${POSTGRESQL_PASSWORD}"
             export REDIS_PASSWORD="${REDIS_PASSWORD}"
             export DO_SERVER_IP="${DO_SERVER_IP}"
+            echo "✅ Environment variables exported"
 
-            echo "📜 Creating .env files from templates"
+            echo "📜 Rendering .env files from templates..."
             envsubst < .env.example > .env
             envsubst < src/.env.example > src/.env
+            echo "✅ .env files created"
 
-            echo "✅ Validating .env files for unresolved variables"
-            grep -E '\$\{[A-Z_]+\}' .env src/.env && {
+            echo "🔍 Validating .env files..."
+            if grep -E '\$\{[A-Z_]+\}' .env src/.env; then
               echo "❌ Unresolved variables found in .env files!"
               exit 1
-            } || echo "✅ All variables are correctly substituted"
+            else
+              echo "✅ All environment variables resolved"
+            fi
 
-            echo "🛑 Stopping existing containers"
+            echo "🛑 Stopping existing containers..."
             docker-compose -f docker-compose.prod.yml down --remove-orphans
+            echo "✅ Containers stopped"
 
-            echo "🧹 Cleaning Docker cache"
+            echo "🧹 Cleaning up old Docker resources..."
             docker system prune -af
+            echo "✅ Docker cleaned"
 
-            echo "🐳 Pulling latest image"
+            echo "📥 Pulling latest image..."
             docker pull $DOCKER_IMAGE:latest
+            echo "✅ Image pulled"
 
-            echo "🚀 Starting containers"
+            echo "🚀 Starting containers..."
             docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+            echo "✅ Containers started"
 
-            echo "🔐 Generating APP_KEY"
+            echo "🔐 Generating Laravel APP_KEY..."
             docker exec user_service_app php artisan key:generate --force
+            echo "✅ APP_KEY generated"
 
-            echo "🔗 Ensuring storage link exists"
+            echo "🔗 Linking storage if missing..."
             docker exec user_service_app bash -c '[ -L public/storage ] || php artisan storage:link'
+            echo "✅ storage link ensured"
 
             echo "⏳ Waiting for Laravel to be ready..."
             attempts=0
@@ -136,14 +158,16 @@ jobs:
               fi
               sleep 5
             done
-            echo "✅ Laravel is ready!"
+            echo "✅ Laravel is ready"
 
-            echo "📦 Running migrations"
+            echo "📦 Running Laravel migrations..."
             docker exec user_service_app php artisan migrate --force
+            echo "✅ Migrations completed"
 
-            echo "🔧 Optimizing config & routes"
+            echo "⚡ Clearing and caching config..."
             docker exec user_service_app php artisan optimize:clear
             docker exec user_service_app php artisan config:cache
             docker exec user_service_app php artisan route:cache
+            echo "✅ Config and routes cached"
 
-            echo "✅ Deployment Completed!"
+            echo "🎉 Deployment complete!"
