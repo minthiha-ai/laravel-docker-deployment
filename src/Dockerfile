@@ -20,7 +20,7 @@ WORKDIR /usr/share/nginx/html/
 
 COPY . ./
 
-COPY .env.example .env
+# COPY .env.example .env
 
 # You could optionally exclude .env from COPY and bind-mount it
 
