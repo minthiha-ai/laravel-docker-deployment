@@ -60,12 +60,8 @@ jobs:
           script: |
             set -e
 
-            echo "📁 Setting up $PROJECT_DIR"
-            echo "📂 Using PROJECT_DIR: $PROJECT_DIR"
-            if [ ! -d "$PROJECT_DIR" ]; then
-              mkdir -p $PROJECT_DIR
-            fi
-            cd $PROJECT_DIR
+            echo "📂 Setting up $PROJECT_DIR"
+            mkdir -p $PROJECT_DIR && cd $PROJECT_DIR
 
             echo "📦 Using Docker image: $DOCKER_IMAGE"
 
@@ -77,39 +73,43 @@ jobs:
               sudo systemctl start docker
             fi
 
-            echo "📦 Pulling latest code safely..."
+            # Pull latest repo code
             if [ ! -d ".git" ]; then
+              echo "🌀 Cloning repository..."
               git clone https://github.com/minthiha-ai/laravel-docker-deployment.git .
             else
+              echo "🔄 Updating code..."
               git reset --hard
               git pull origin main
             fi
 
+            # Ensure envsubst is available
             if ! command -v envsubst &> /dev/null; then
               echo "🔧 Installing envsubst..."
               sudo apt update && sudo apt install -y gettext
             fi
 
-            echo "📜 Checking .env file for docker-compose"
-            if [ ! -f ".env" ]; then
-              envsubst < .env.example > .env
-              echo "✅ .env created"
-            else
-              echo "✅ .env already exists, skipping..."
-            fi
+            echo "📜 Exporting secrets for envsubst"
+            export POSTGRESQL_DATABASE="${POSTGRESQL_DATABASE}"
+            export POSTGRESQL_USERNAME="${POSTGRESQL_USERNAME}"
+            export POSTGRESQL_PASSWORD="${POSTGRESQL_PASSWORD}"
+            export REDIS_PASSWORD="${REDIS_PASSWORD}"
+            export DO_SERVER_IP="${DO_SERVER_IP}"
 
-            echo "📜 Checking Laravel src/.env file"
-            if [ ! -f "src/.env" ]; then
-              envsubst < src/.env.example > src/.env
-              echo "✅ Laravel .env created"
-            else
-              echo "✅ Laravel .env already exists, skipping..."
-            fi
+            echo "📜 Creating .env files from templates"
+            envsubst < .env.example > .env
+            envsubst < src/.env.example > src/.env
 
-            echo "🛑 Stopping running containers"
+            echo "✅ Validating .env files for unresolved variables"
+            grep -E '\$\{[A-Z_]+\}' .env src/.env && {
+              echo "❌ Unresolved variables found in .env files!"
+              exit 1
+            } || echo "✅ All variables are correctly substituted"
+
+            echo "🛑 Stopping existing containers"
             docker-compose -f docker-compose.prod.yml down --remove-orphans
 
-            echo "🧹 Cleaning up Docker system"
+            echo "🧹 Cleaning Docker cache"
             docker system prune -af
 
             echo "🐳 Pulling latest image"
@@ -118,17 +118,11 @@ jobs:
             echo "🚀 Starting containers"
             docker-compose -f docker-compose.prod.yml up -d --remove-orphans
 
-            # echo "🔐 Checking APP_KEY"
-            # KEY=$(docker exec user_service_app php -r "echo env('APP_KEY');")
-            # if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
-            #   echo "⚡ No APP_KEY found. Generating..."
-            #   docker exec user_service_app php artisan key:generate --force
-            # else
-            #   echo "✅ APP_KEY already set."
-            # fi
-
-            echo "🔐 Generating APP_KEY (safe to run multiple times)"
+            echo "🔐 Generating APP_KEY"
             docker exec user_service_app php artisan key:generate --force
+
+            echo "🔗 Ensuring storage link exists"
+            docker exec user_service_app bash -c '[ -L public/storage ] || php artisan storage:link'
 
             echo "⏳ Waiting for Laravel to be ready..."
             attempts=0
