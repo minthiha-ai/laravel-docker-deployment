@@ -146,19 +146,19 @@ jobs:
             docker exec user_service_app bash -c '[ -L public/storage ] || php artisan storage:link'
             echo "✅ storage link ensured"
 
-            echo "⏳ Waiting for Laravel to be ready..."
-            attempts=0
-            until docker exec user_service_app php artisan migrate:status > /dev/null 2>&1; do
-              attempts=$((attempts+1))
-              echo "⌛ Attempt $attempts: Laravel not ready..."
-              if [ "$attempts" -ge 20 ]; then
-                echo "❌ Timeout: Laravel not ready after $attempts attempts"
-                docker logs user_service_app
-                exit 1
-              fi
-              sleep 5
-            done
-            echo "✅ Laravel is ready"
+            # echo "⏳ Waiting for Laravel to be ready..."
+            # attempts=0
+            # until docker exec user_service_app php artisan migrate:status > /dev/null 2>&1; do
+            #   attempts=$((attempts+1))
+            #   echo "⌛ Attempt $attempts: Laravel not ready..."
+            #   if [ "$attempts" -ge 20 ]; then
+            #     echo "❌ Timeout: Laravel not ready after $attempts attempts"
+            #     docker logs user_service_app
+            #     exit 1
+            #   fi
+            #   sleep 5
+            # done
+            # echo "✅ Laravel is ready"
 
             echo "📦 Running Laravel migrations..."
             docker exec user_service_app php artisan migrate --force
