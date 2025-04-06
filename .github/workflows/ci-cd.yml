@@ -180,7 +180,7 @@ jobs:
 
             echo "🔐 Setting up Passport if needed..."
             if ! docker exec user_service_app test -f storage/oauth-private.key; then
-                docker exec user_service_app php artisan passport:install --force
+                docker exec user_service_app php artisan passport:keys --force
                 echo "✅ Passport keys & clients generated"
             else
                 echo "✅ Passport already installed"
