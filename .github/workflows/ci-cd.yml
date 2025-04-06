@@ -110,16 +110,25 @@ jobs:
             echo "✅ Environment variables exported"
 
             echo "📜 Rendering .env files from templates..."
-            envsubst < .env.example > .env
-            envsubst < src/.env.example > src/.env
-            echo "✅ .env files created"
+            if [ ! -f ".env" ]; then
+                envsubst < .env.example > .env
+                echo "✅ .env created"
+            else
+                echo "✅ .env exists — skipping creation"
+            fi
+            if [ ! -f "src/.env" ]; then
+                envsubst < src/.env.example > src/.env
+                echo "✅ Laravel .env created"
+            else
+                echo "✅ Laravel .env already exists — skipping"
+            fi
 
             echo "🔍 Validating .env files..."
             if grep -E '\$\{[A-Z_]+\}' .env src/.env; then
-              echo "❌ Unresolved variables found in .env files!"
-              exit 1
+                echo "❌ Unresolved variables found in .env files!"
+                exit 1
             else
-              echo "✅ All environment variables resolved"
+                echo "✅ All environment variables resolved"
             fi
 
             echo "🛑 Stopping existing containers..."
@@ -138,9 +147,14 @@ jobs:
             docker-compose -f docker-compose.prod.yml up -d --remove-orphans
             echo "✅ Containers started"
 
-            echo "🔐 Generating Laravel APP_KEY..."
-            docker exec user_service_app php artisan key:generate --force
-            echo "✅ APP_KEY generated"
+            echo "🔐 Checking APP_KEY..."
+            KEY=$(docker exec user_service_app php -r "echo env('APP_KEY');")
+            if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
+                docker exec user_service_app php artisan key:generate --force
+                echo "✅ APP_KEY generated"
+            else
+                echo "✅ APP_KEY already set"
+            fi
 
             echo "🔗 Linking storage if missing..."
             docker exec user_service_app bash -c '[ -L public/storage ] || php artisan storage:link'
@@ -149,20 +163,28 @@ jobs:
             echo "⏳ Waiting for Laravel to be ready..."
             attempts=0
             until docker exec user_service_app php artisan migrate:status > /dev/null 2>&1; do
-              attempts=$((attempts+1))
-              echo "⌛ Attempt $attempts: Laravel not ready..."
-              if [ "$attempts" -ge 10 ]; then
-                echo "❌ Timeout: Laravel not ready after $attempts attempts"
-                docker logs user_service_app
-                exit 1
-              fi
-              sleep 5
+                attempts=$((attempts+1))
+                echo "⌛ Attempt $attempts: Laravel not ready..."
+                if [ "$attempts" -ge 10 ]; then
+                    echo "❌ Timeout: Laravel not ready after $attempts attempts"
+                    docker logs user_service_app
+                    exit 1
+                fi
+                sleep 5
             done
             echo "✅ Laravel is ready"
 
             echo "📦 Running Laravel migrations..."
             docker exec user_service_app php artisan migrate --force
             echo "✅ Migrations completed"
+
+            echo "🔐 Setting up Passport if needed..."
+            if ! docker exec user_service_app test -f storage/oauth-private.key; then
+                docker exec user_service_app php artisan passport:install --force
+                echo "✅ Passport keys & clients generated"
+            else
+                echo "✅ Passport already installed"
+            fi
 
             echo "⚡ Clearing and caching config..."
             docker exec user_service_app php artisan optimize:clear
