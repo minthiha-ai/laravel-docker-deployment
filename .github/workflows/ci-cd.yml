@@ -148,8 +148,10 @@ jobs:
             echo "✅ Containers started"
 
             echo "🔐 Checking APP_KEY..."
-            KEY=$(docker exec user_service_app php -r "echo env('APP_KEY');")
+            KEY=$(docker exec user_service_app php artisan config:get app.key)
+
             if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
+                echo "⚡ No APP_KEY found. Generating..."
                 docker exec user_service_app php artisan key:generate --force
                 echo "✅ APP_KEY generated"
             else
