@@ -28,3 +28,9 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/user/types', [UserController::class, 'userTypes']);
     Route::get('/user/location', [UserController::class, 'location']);
 });
+Route::middleware('verify.api.signature')->group(function () {
+    //This route is testing purpose only,if you want to delete, you can
+    Route::get('test/microservice',function (){
+       return response()->json(['status'=>200,'msg'=>'Connection successful']);
+    });
+});
