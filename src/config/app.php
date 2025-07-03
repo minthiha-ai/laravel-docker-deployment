@@ -39,7 +39,7 @@ return [
     |
     */
 
-    'debug' => (bool) env('APP_DEBUG', false),
+    'debug' => (bool)env('APP_DEBUG', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -124,8 +124,10 @@ return [
     ],
 
     'api' => [
-        'key' => 'AG8AQAEQGJVDO4WWKNACWXW0JWHYN8AQ',
-        'secret' => 'EHkePjHzCm8fQeLsxm9OuJRlFI5OuXUpa2LvtFmwsaSoyNQDVqKnLWSIKK6Dvofk',
+        [
+            'key' => 'AG8AQAEQGJVDO4WWKNACWXW0JWHYN8AQ',
+            'secret' => 'EHkePjHzCm8fQeLsxm9OuJRlFI5OuXUpa2LvtFmwsaSoyNQDVqKnLWSIKK6Dvofk',
+        ]
     ]
 
 ];

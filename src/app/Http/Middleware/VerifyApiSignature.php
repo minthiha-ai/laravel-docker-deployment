@@ -28,10 +28,16 @@ class VerifyApiSignature
             return response()->json(['error' => 'Invalid or expired timestamp'], 401);
         }
 
-        $config_apikey= config('app.api.key');
-        $config_secretkey= config('app.api.secret');
-
-        if ($config_apikey != $apiKey) {
+        $apiArr = config('app.api');
+        $found = false;
+        foreach ($apiArr as $api) {
+            if ($api['key'] === $apiKey) {
+                $found = true;
+                $config_secretkey = $api['secret'];
+                break;
+            }
+        }
+        if (!$found) {
             return response()->json(['error' => 'Invalid API key'], 403);
         }
 
