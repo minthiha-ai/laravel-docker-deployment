@@ -1,1 +1,5 @@
 .env
+bootstrap/cache/
+storage
+vendor
+.idea
