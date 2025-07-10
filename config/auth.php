@@ -44,6 +44,10 @@ return [
             'driver' => 'passport',
             'provider' => 'users',
         ],
+        'business_admin' => [
+            'driver' => 'passport',
+            'provider' => 'business_admins',
+        ],
     ],
 
     /*
@@ -67,6 +71,11 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', App\Models\User::class),
+        ],
+
+        'business_admins' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\BusinessAdminAccount::class,
         ],
 
         // 'users' => [

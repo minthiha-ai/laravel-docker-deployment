@@ -23,7 +23,7 @@ services:
     environment:
       IS_WORKER: "true"
     env_file:
-      - ./src/.env
+      - .env
     depends_on:
       - db
       - redis
